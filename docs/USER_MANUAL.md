@@ -10,10 +10,17 @@ Expose Codex CLI capabilities to other AI CLIs via MCP. This runs locally as an 
 
 1) Install (choose one):
 
+Note: this project is not published to the npm registry yet. `npm install -g codex-mcp-bridge` will 404; install from GitHub or from a local clone.
+
 **A) Global install (GitHub)**
 ```bash
 npm install -g git+ssh://git@github.com:crismote77-hash/Codex-MCP-Bridge.git
 # or: npm install -g git+https://github.com/crismote77-hash/Codex-MCP-Bridge.git
+```
+
+If you prefer a user-local install (no sudo), use:
+```bash
+npm install -g git+ssh://git@github.com:crismote77-hash/Codex-MCP-Bridge.git --prefix ~/.local
 ```
 
 **B) From source (local clone)**
@@ -22,6 +29,12 @@ git clone git@github.com:crismote77-hash/Codex-MCP-Bridge.git
 cd Codex-MCP-Bridge
 npm install
 npm run setup
+```
+
+Verify the CLI is available:
+```bash
+which codex-mcp-bridge || echo "Not on PATH (try ~/.local/bin/codex-mcp-bridge or add ~/.local/bin to PATH)"
+codex-mcp-bridge --version || true
 ```
 
 2) Authenticate (recommended):
@@ -40,32 +53,76 @@ codex login
 
 ## Setup Wizard
 
-Use the guided wizard to create or update your config:
-```bash
-codex-mcp-bridge --setup
-```
+The setup wizard creates or updates the bridge config file and prints a summary (to stderr).
 
-If you're running from a local clone (no global install), use:
-```bash
-npm run setup
-# or: npm run build && node dist/index.js --setup
-```
+Run it via whichever command you installed:
+- Global install / on PATH: `codex-mcp-bridge --setup`
+- User-local prefix install: `~/.local/bin/codex-mcp-bridge --setup`
+- From a local clone: `npm run setup` (builds `dist/` then runs `node dist/index.js --setup`)
 
-Non-interactive example (accept defaults, set auth mode + model):
+What it writes:
+- Config file: `~/.codex-mcp-bridge/config.json` (or `--config <path>`)
+- No secrets: API keys are never stored (only env var names / key-file env var names)
+
+### Basic flow (recommended)
+
+The basic flow asks only for:
+1) Transport (`stdio` or `http`)
+2) Auth mode (`auto`, `cli`, `api_key`)
+3) Default model (used unless overridden)
+
+About the default model:
+- The wizard sets both `cli.defaultModel` (Codex CLI execution) and `api.model` (API fallback).
+- Model choice can be per-request: pass `model` to `codex_exec` (and to `codex_review` in API mode).
+- If your Codex CLI login only supports certain models (common with ChatGPT-account logins), prefer letting Codex CLI pick its own default. If you omit `model` and the bridge’s default model is rejected, `codex_exec` auto-retries once without `--model`.
+
+### Advanced settings (optional)
+
+After the basic questions, the wizard can prompt for advanced settings. It’s safe to answer “No” to all of these unless you have a specific need.
+
+**Customize Codex CLI command or auth path**
+- Use when `codex` isn’t on the PATH for the MCP client (GUI apps often have a different PATH), or when credentials are stored in a non-default location.
+- Examples: `--cli-command /absolute/path/to/codex`, `--cli-auth-path /absolute/path/to/auth.json`
+
+**Customize API key env var names**
+- Use when you already have an API key wired under different env var names.
+- Also useful in locked-down environments where you must use a file-based secret: `OPENAI_API_KEY_FILE` (or whatever you configure).
+
+**Customize API settings**
+- Only used in API-key mode (or if `auth.mode=auto` falls back to API).
+- For proxies/self-hosted gateways: API base URL.
+- For behavior/tuning: temperature, max output tokens.
+
+**Configure limits and timeouts**
+- Safety rails: request timeout, max input chars, requests/minute, tokens/day.
+- Optional shared limits (Redis) are for multi-process/multi-client deployments that should share a single budget.
+
+### Non-interactive / automation
+
+Examples:
 ```bash
 codex-mcp-bridge --setup --non-interactive --auth auto --model o3
+codex-mcp-bridge --setup --dry-run
+codex-mcp-bridge --setup --overwrite
 ```
 
-HTTP transport example:
+### Mock transcript (defaults, minimal)
+
+```text
+Select transport mode: stdio (default)
+Select authentication mode: auto (default)
+Default model (used unless overridden) [o3] (press enter)
+
+Configure advanced settings (CLI paths, env vars, API settings, limits)? [y/N] n
+```
+
+### Doctor / print-config
+
+Use these for debugging your install and config:
 ```bash
-codex-mcp-bridge --setup --http --http-host 127.0.0.1 --http-port 3923
+codex-mcp-bridge --doctor
+codex-mcp-bridge --print-config
 ```
-
-Notes:
-- The wizard writes `~/.codex-mcp-bridge/config.json` (or `--config <path>`).
-- API keys are never stored; use env vars or a key file.
-- `--overwrite` replaces the config; default behavior is merge.
-- Use `--dry-run` to preview the summary without writing.
 
 ---
 

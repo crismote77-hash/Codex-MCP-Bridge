@@ -41,6 +41,23 @@ Selection:
 
 ---
 
+## Configuration and Precedence
+
+Config sources (lowest to highest precedence):
+1) Built-in defaults (`src/config.ts`)
+2) Optional JSON config file (default `~/.codex-mcp-bridge/config.json`)
+3) Environment variables (`CODEX_MCP_*`)
+4) Per-tool request arguments (e.g. `model`, `cwd`, `timeoutMs`)
+
+Model defaults:
+- CLI mode: if a `codex_exec` request does not specify `model`, the bridge passes `--model <config.cli.defaultModel>` to Codex CLI by default.
+- API-key mode: if a request does not specify `model`, the bridge uses `config.api.model` for the OpenAI Responses API call.
+- The setup wizard sets both `cli.defaultModel` and `api.model` together; they can be edited independently later.
+
+Compatibility fallback:
+- Some Codex CLI logins (notably ChatGPT-account auth) only support a subset of models.
+- If `codex_exec` is invoked without an explicit `model` and Codex CLI reports the chosen model is unsupported for that login, the bridge auto-retries once without a `--model` override so Codex CLI can use its own default.
+
 ## Codex CLI Idiosyncrasies (Modeled)
 
 - Config overrides use `-c key=value` and TOML parsing.
@@ -53,10 +70,6 @@ Selection:
   - `--uncommitted`, `--base <branch>`, `--commit <sha>`, `--title <text>`
 
 We model these as optional tool arguments and pass them through to the CLI.
-
-CLI-mode model compatibility:
-- Some Codex CLI logins (notably ChatGPT-account auth) only support a subset of models.
-- If `codex_exec` is invoked without an explicit `model` and Codex CLI reports the chosen model is unsupported for that login, the bridge auto-retries once without a `--model` override so Codex CLI can use its own default.
 
 ---
 
@@ -134,6 +147,11 @@ Wizard behavior:
 - Writes `~/.codex-mcp-bridge/config.json` (or `--config <path>`).
 - Never stores API keys; only env var names are written.
 - Outputs to stderr to avoid MCP stdout conflicts.
+- Default behavior is merge; `--overwrite` replaces the config, and `--dry-run` prints a summary without writing.
+
+Wizard prompt groups:
+- Basic: transport, auth mode, default model.
+- Advanced (optional): Codex CLI command/auth path, API key env var names, API fallback settings, limits/timeouts (including optional Redis shared limits).
 
 ---
 

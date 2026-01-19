@@ -39,3 +39,7 @@
 
 - codex_exec: auto-retry without default --model when ChatGPT-account login rejects model; add CLI-mode test; docs+status updated; verified: npm test, npm run build, npm run lint; next: reinstall + re-test in Claude/Gemini
 
+## 2026-01-19T19:58:41Z
+
+- Docs: expand USER_MANUAL and TECHNICAL (wizard walkthrough, advanced option explanations, model selection guidance, doctor/print-config); verified: npm test, npm run build, npm run lint; next: user re-test setup + Claude/Gemini tools
+

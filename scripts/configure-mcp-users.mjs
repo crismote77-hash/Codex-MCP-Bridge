@@ -151,8 +151,7 @@ function findTomlTableRange(content, tableName) {
   const start = match.index;
   const afterHeaderIdx = content.indexOf("\n", start);
   const searchFrom = afterHeaderIdx === -1 ? content.length : afterHeaderIdx + 1;
-  const nextHeaderRe = /^\\[/m;
-  nextHeaderRe.lastIndex = searchFrom;
+  const nextHeaderRe = /^\[/m;
   const nextMatch = nextHeaderRe.exec(content.slice(searchFrom));
   const end = nextMatch ? searchFrom + nextMatch.index : content.length;
   return { start, end };

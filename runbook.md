@@ -27,3 +27,7 @@
 
 - Wizard UX: default model in basic flow; advanced settings gated; summary reflects effective config; docs clarify per-request model override; verified: npm test, npm run build, npm run lint; next: user try interactive wizard
 
+## 2026-01-19T19:15:45Z
+
+- Fix configure-mcp-users TOML header regex; verified: npm test, npm run build, npm run lint; used script to configure Claude+Gemini for user crismote
+

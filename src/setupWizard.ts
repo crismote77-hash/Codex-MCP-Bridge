@@ -1,0 +1,733 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import readline from "node:readline/promises";
+import { stdin, stderr } from "node:process";
+import { DEFAULT_CONFIG_PATH, getDefaultConfig } from "./config.js";
+import { expandHome } from "./utils/paths.js";
+import { isRecord } from "./utils/typeGuards.js";
+
+type TransportMode = "stdio" | "http";
+type AuthMode = "auto" | "cli" | "api_key";
+
+export type SetupWizardOptions = {
+  configPath?: string;
+  nonInteractive?: boolean;
+  acceptDefaults?: boolean;
+  overwrite?: boolean;
+  merge?: boolean;
+  dryRun?: boolean;
+  transport?: TransportMode;
+  httpHost?: string;
+  httpPort?: number;
+  authMode?: AuthMode;
+  cliCommand?: string;
+  cliAuthPath?: string;
+  model?: string;
+  apiBaseUrl?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  maxInputChars?: number;
+  maxRequestsPerMinute?: number;
+  maxTokensPerDay?: number;
+  sharedLimitsEnabled?: boolean;
+  redisUrl?: string;
+  redisKeyPrefix?: string;
+  apiKeyEnvVar?: string;
+  apiKeyEnvVarAlt?: string;
+  apiKeyFileEnvVar?: string;
+};
+
+type MergeStrategy = "merge" | "overwrite" | "cancel";
+
+type WizardAnswers = {
+  transportMode: TransportMode;
+  httpHost?: string;
+  httpPort?: number;
+  authMode: AuthMode;
+  cliCommand?: string;
+  cliAuthPath?: string;
+  apiKeyEnvVar?: string;
+  apiKeyEnvVarAlt?: string;
+  apiKeyFileEnvVar?: string;
+  model?: string;
+  apiBaseUrl?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  maxInputChars?: number;
+  maxRequestsPerMinute?: number;
+  maxTokensPerDay?: number;
+  sharedLimitsEnabled?: boolean;
+  redisUrl?: string;
+  redisKeyPrefix?: string;
+};
+
+const YES_VALUES = new Set(["y", "yes"]);
+const NO_VALUES = new Set(["n", "no"]);
+
+function writeLine(message = ""): void {
+  stderr.write(`${message}\n`);
+}
+
+function formatDefault(value: string | number | undefined): string {
+  if (value === undefined || value === "") return "";
+  return ` [${value}]`;
+}
+
+function normalizeTransport(value: string | undefined): TransportMode | null {
+  if (value === "stdio" || value === "http") return value;
+  return null;
+}
+
+function normalizeAuth(value: string | undefined): AuthMode | null {
+  if (value === "auto" || value === "cli" || value === "api_key") return value;
+  return null;
+}
+
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function parseFloatRange(
+  value: string,
+  min: number,
+  max: number,
+): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
+function mergeDeep(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    const existing = out[key];
+    if (isRecord(existing) && isRecord(value)) {
+      out[key] = mergeDeep(existing, value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function setNested(
+  target: Record<string, unknown>,
+  pathParts: string[],
+  value: unknown,
+): void {
+  let cursor: Record<string, unknown> = target;
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    const key = pathParts[i];
+    if (!isRecord(cursor[key])) cursor[key] = {};
+    cursor = cursor[key] as Record<string, unknown>;
+  }
+  cursor[pathParts[pathParts.length - 1]] = value;
+}
+
+async function readJsonFile(
+  filePath: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function runSetupWizard(
+  opts: SetupWizardOptions = {},
+): Promise<void> {
+  const defaults = getDefaultConfig();
+  const configPathInput = opts.configPath ?? DEFAULT_CONFIG_PATH;
+  const configPathResolved = path.resolve(expandHome(configPathInput));
+  const nonInteractive = Boolean(opts.nonInteractive);
+  const acceptDefaults = Boolean(opts.acceptDefaults);
+  const shouldPrompt = !nonInteractive && !acceptDefaults;
+  const explicitTransport =
+    shouldPrompt ||
+    opts.transport !== undefined ||
+    opts.httpHost !== undefined ||
+    opts.httpPort !== undefined;
+  const explicitAuth =
+    shouldPrompt ||
+    opts.authMode !== undefined ||
+    opts.cliCommand !== undefined ||
+    opts.cliAuthPath !== undefined ||
+    opts.apiKeyEnvVar !== undefined ||
+    opts.apiKeyEnvVarAlt !== undefined ||
+    opts.apiKeyFileEnvVar !== undefined;
+  const explicitModel = shouldPrompt || opts.model !== undefined;
+
+  const rl = shouldPrompt
+    ? readline.createInterface({ input: stdin, output: stderr })
+    : null;
+
+  const ask = async (prompt: string): Promise<string> => {
+    if (!rl) return "";
+    return rl.question(prompt);
+  };
+
+  const askConfirm = async (
+    prompt: string,
+    defaultYes: boolean,
+  ): Promise<boolean> => {
+    if (!shouldPrompt) return defaultYes;
+    const suffix = defaultYes ? " [Y/n] " : " [y/N] ";
+    while (true) {
+      const answer = (await ask(`${prompt}${suffix}`)).trim().toLowerCase();
+      if (!answer) return defaultYes;
+      if (YES_VALUES.has(answer)) return true;
+      if (NO_VALUES.has(answer)) return false;
+      writeLine("Please answer y or n.");
+    }
+  };
+
+  const askChoice = async <T extends string>(
+    prompt: string,
+    options: Array<{ value: T; label: string }>,
+    defaultValue: T,
+  ): Promise<T> => {
+    if (!shouldPrompt) return defaultValue;
+    writeLine(prompt);
+    options.forEach((option, index) => {
+      const suffix = option.value === defaultValue ? " (default)" : "";
+      writeLine(`  ${index + 1}) ${option.label}${suffix}`);
+    });
+    while (true) {
+      const answer = (await ask("Select an option: ")).trim();
+      if (!answer) return defaultValue;
+      const asNumber = Number.parseInt(answer, 10);
+      if (
+        Number.isFinite(asNumber) &&
+        asNumber >= 1 &&
+        asNumber <= options.length
+      ) {
+        return options[asNumber - 1].value;
+      }
+      const match = options.find((option) => option.value === answer);
+      if (match) return match.value;
+      writeLine("Invalid selection.");
+    }
+  };
+
+  const askText = async (
+    prompt: string,
+    defaultValue?: string,
+    allowEmpty = true,
+  ): Promise<string | undefined> => {
+    if (!shouldPrompt) return defaultValue;
+    const suffix = formatDefault(defaultValue);
+    while (true) {
+      const answer = (await ask(`${prompt}${suffix} `)).trim();
+      if (!answer) return defaultValue ?? (allowEmpty ? undefined : "");
+      if (answer || allowEmpty) return answer;
+      writeLine("Value cannot be empty.");
+    }
+  };
+
+  const askInt = async (
+    prompt: string,
+    defaultValue?: number,
+  ): Promise<number | undefined> => {
+    if (!shouldPrompt) return defaultValue;
+    const suffix = formatDefault(defaultValue);
+    while (true) {
+      const answer = (await ask(`${prompt}${suffix} `)).trim();
+      if (!answer) return defaultValue;
+      const parsed = parsePositiveInt(answer);
+      if (parsed !== null) return parsed;
+      writeLine("Enter a positive integer.");
+    }
+  };
+
+  const askFloat = async (
+    prompt: string,
+    defaultValue: number,
+    min: number,
+    max: number,
+  ): Promise<number> => {
+    if (!shouldPrompt) return defaultValue;
+    const suffix = formatDefault(defaultValue);
+    while (true) {
+      const answer = (await ask(`${prompt}${suffix} `)).trim();
+      if (!answer) return defaultValue;
+      const parsed = parseFloatRange(answer, min, max);
+      if (parsed !== null) return parsed;
+      writeLine(`Enter a number between ${min} and ${max}.`);
+    }
+  };
+
+  try {
+    writeLine("Codex MCP Bridge setup wizard");
+    writeLine("This will create or update your local config file.");
+    writeLine("No API keys are stored; set env vars or a key file separately.");
+    writeLine();
+
+    const exists = await fileExists(configPathResolved);
+    let mergeStrategy: MergeStrategy = "merge";
+    let existingConfig: Record<string, unknown> | null = null;
+
+    if (exists) {
+      if (opts.overwrite) {
+        mergeStrategy = "overwrite";
+      } else if (opts.merge) {
+        mergeStrategy = "merge";
+      } else if (shouldPrompt) {
+        mergeStrategy = await askChoice(
+          `Config already exists at ${configPathResolved}. Choose an action:`,
+          [
+            { value: "merge", label: "Merge (recommended)" },
+            { value: "overwrite", label: "Overwrite" },
+            { value: "cancel", label: "Cancel" },
+          ],
+          "merge",
+        );
+      }
+
+      if (mergeStrategy === "cancel") {
+        writeLine("Setup canceled.");
+        return;
+      }
+
+      if (mergeStrategy === "merge") {
+        existingConfig = await readJsonFile(configPathResolved);
+        if (!existingConfig) {
+          if (shouldPrompt) {
+            writeLine("Existing config is not valid JSON.");
+            const overwrite = await askConfirm("Overwrite instead?", false);
+            if (!overwrite) {
+              writeLine("Setup canceled.");
+              return;
+            }
+            mergeStrategy = "overwrite";
+          } else {
+            throw new Error(
+              "Existing config is invalid JSON; use --overwrite.",
+            );
+          }
+        }
+      }
+    }
+
+    const transportDefault = opts.transport ?? defaults.transport.mode;
+    const transportMode =
+      normalizeTransport(transportDefault) ??
+      (shouldPrompt
+        ? await askChoice<TransportMode>(
+            "Select transport mode:",
+            [
+              { value: "stdio", label: "stdio (recommended for MCP clients)" },
+              { value: "http", label: "http (Streamable HTTP server)" },
+            ],
+            defaults.transport.mode,
+          )
+        : defaults.transport.mode);
+
+    const httpHost =
+      transportMode === "http"
+        ? (opts.httpHost ??
+          (await askText("HTTP host", defaults.transport.http.host, false)))
+        : undefined;
+    const httpPort =
+      transportMode === "http"
+        ? (opts.httpPort ??
+          (await askInt("HTTP port", defaults.transport.http.port)))
+        : undefined;
+
+    const authDefault = opts.authMode ?? defaults.auth.mode;
+    const authMode =
+      normalizeAuth(authDefault) ??
+      (shouldPrompt
+        ? await askChoice<AuthMode>(
+            "Select authentication mode:",
+            [
+              { value: "auto", label: "auto (CLI first, API key fallback)" },
+              { value: "cli", label: "cli (requires Codex CLI login)" },
+              { value: "api_key", label: "api_key (env var or key file)" },
+            ],
+            defaults.auth.mode,
+          )
+        : defaults.auth.mode);
+
+    let cliCommand = opts.cliCommand;
+    let cliAuthPath = opts.cliAuthPath;
+    let customizeCli = Boolean(opts.cliCommand) || Boolean(opts.cliAuthPath);
+    if (authMode !== "api_key") {
+      if (shouldPrompt) {
+        customizeCli = await askConfirm(
+          "Customize Codex CLI command or auth path?",
+          false,
+        );
+        if (customizeCli) {
+          cliCommand = await askText(
+            "Codex CLI command",
+            defaults.cli.command,
+            false,
+          );
+          cliAuthPath = await askText(
+            "Codex CLI auth path",
+            defaults.auth.cliAuthPath,
+            false,
+          );
+        }
+      }
+    }
+
+    let apiKeyEnvVar = opts.apiKeyEnvVar;
+    let apiKeyEnvVarAlt = opts.apiKeyEnvVarAlt;
+    let apiKeyFileEnvVar = opts.apiKeyFileEnvVar;
+    let customizeApiKeyEnv =
+      opts.apiKeyEnvVar !== undefined ||
+      opts.apiKeyEnvVarAlt !== undefined ||
+      opts.apiKeyFileEnvVar !== undefined;
+    if (authMode !== "cli") {
+      if (shouldPrompt) {
+        customizeApiKeyEnv = await askConfirm(
+          "Customize API key env var names?",
+          false,
+        );
+        if (customizeApiKeyEnv) {
+          apiKeyEnvVar = await askText(
+            "Primary API key env var",
+            defaults.auth.apiKeyEnvVar,
+            false,
+          );
+          apiKeyEnvVarAlt = await askText(
+            "Alternate API key env var (optional)",
+            defaults.auth.apiKeyEnvVarAlt,
+            true,
+          );
+          apiKeyFileEnvVar = await askText(
+            "API key file env var",
+            defaults.auth.apiKeyFileEnvVar,
+            false,
+          );
+        }
+      }
+    }
+
+    const model =
+      opts.model ?? (await askText("Default model", defaults.api.model, false));
+
+    let apiBaseUrl = opts.apiBaseUrl;
+    let temperature = opts.temperature;
+    let maxOutputTokens = opts.maxOutputTokens;
+    let customizeApiSettings =
+      opts.apiBaseUrl !== undefined ||
+      opts.temperature !== undefined ||
+      opts.maxOutputTokens !== undefined;
+    if (authMode !== "cli") {
+      if (shouldPrompt) {
+        customizeApiSettings = await askConfirm(
+          "Customize API settings?",
+          false,
+        );
+        if (customizeApiSettings) {
+          apiBaseUrl = await askText(
+            "API base URL",
+            defaults.api.baseUrl,
+            false,
+          );
+          temperature = await askFloat(
+            "Temperature (0-2)",
+            defaults.api.temperature,
+            0,
+            2,
+          );
+          maxOutputTokens = await askInt(
+            "Max output tokens",
+            defaults.api.maxOutputTokens,
+          );
+        }
+      }
+    }
+
+    let timeoutMs = opts.timeoutMs;
+    let maxInputChars = opts.maxInputChars;
+    let maxRequestsPerMinute = opts.maxRequestsPerMinute;
+    let maxTokensPerDay = opts.maxTokensPerDay;
+    let sharedLimitsEnabled = opts.sharedLimitsEnabled;
+    let redisUrl = opts.redisUrl;
+    let redisKeyPrefix = opts.redisKeyPrefix;
+    let customizeLimits =
+      opts.timeoutMs !== undefined ||
+      opts.maxInputChars !== undefined ||
+      opts.maxRequestsPerMinute !== undefined ||
+      opts.maxTokensPerDay !== undefined ||
+      opts.sharedLimitsEnabled !== undefined ||
+      opts.redisUrl !== undefined ||
+      opts.redisKeyPrefix !== undefined;
+
+    if (shouldPrompt) {
+      customizeLimits = await askConfirm(
+        "Configure limits and timeouts?",
+        false,
+      );
+      if (customizeLimits) {
+        timeoutMs = await askInt(
+          "Request timeout (ms)",
+          defaults.execution.timeoutMs,
+        );
+        maxInputChars = await askInt(
+          "Max input chars",
+          defaults.limits.maxInputChars,
+        );
+        maxRequestsPerMinute = await askInt(
+          "Max requests per minute",
+          defaults.limits.maxRequestsPerMinute,
+        );
+        maxTokensPerDay = await askInt(
+          "Max tokens per day",
+          defaults.limits.maxTokensPerDay,
+        );
+        sharedLimitsEnabled = await askConfirm(
+          "Enable shared limits (Redis)?",
+          false,
+        );
+        if (sharedLimitsEnabled) {
+          redisUrl = await askText(
+            "Redis URL",
+            defaults.limits.shared.redisUrl,
+            false,
+          );
+          redisKeyPrefix = await askText(
+            "Redis key prefix",
+            defaults.limits.shared.keyPrefix,
+            false,
+          );
+        }
+      }
+    }
+
+    const answers: WizardAnswers = {
+      transportMode,
+      httpHost,
+      httpPort,
+      authMode,
+      cliCommand,
+      cliAuthPath,
+      apiKeyEnvVar,
+      apiKeyEnvVarAlt,
+      apiKeyFileEnvVar,
+      model,
+      apiBaseUrl,
+      temperature,
+      maxOutputTokens,
+      timeoutMs,
+      maxInputChars,
+      maxRequestsPerMinute,
+      maxTokensPerDay,
+      sharedLimitsEnabled,
+      redisUrl,
+      redisKeyPrefix,
+    };
+
+    const configPatch: Record<string, unknown> = {};
+    if (explicitAuth || !exists || mergeStrategy === "overwrite") {
+      setNested(configPatch, ["auth", "mode"], answers.authMode);
+    }
+    if (explicitTransport || !exists || mergeStrategy === "overwrite") {
+      setNested(configPatch, ["transport", "mode"], answers.transportMode);
+    }
+
+    if (
+      answers.transportMode === "http" &&
+      (explicitTransport || shouldPrompt)
+    ) {
+      if (
+        answers.httpHost &&
+        answers.httpHost !== defaults.transport.http.host
+      ) {
+        setNested(configPatch, ["transport", "http", "host"], answers.httpHost);
+      }
+      if (
+        typeof answers.httpPort === "number" &&
+        answers.httpPort !== defaults.transport.http.port
+      ) {
+        setNested(configPatch, ["transport", "http", "port"], answers.httpPort);
+      }
+    }
+
+    if (
+      answers.model &&
+      (explicitModel || !exists || mergeStrategy === "overwrite")
+    ) {
+      setNested(configPatch, ["api", "model"], answers.model);
+      setNested(configPatch, ["cli", "defaultModel"], answers.model);
+    }
+
+    if (customizeCli && answers.cliCommand) {
+      setNested(configPatch, ["cli", "command"], answers.cliCommand);
+    }
+    if (customizeCli && answers.cliAuthPath) {
+      setNested(configPatch, ["auth", "cliAuthPath"], answers.cliAuthPath);
+    }
+
+    if (customizeApiKeyEnv && answers.apiKeyEnvVar) {
+      setNested(configPatch, ["auth", "apiKeyEnvVar"], answers.apiKeyEnvVar);
+    }
+    if (customizeApiKeyEnv && answers.apiKeyEnvVarAlt) {
+      setNested(
+        configPatch,
+        ["auth", "apiKeyEnvVarAlt"],
+        answers.apiKeyEnvVarAlt,
+      );
+    }
+    if (customizeApiKeyEnv && answers.apiKeyFileEnvVar) {
+      setNested(
+        configPatch,
+        ["auth", "apiKeyFileEnvVar"],
+        answers.apiKeyFileEnvVar,
+      );
+    }
+
+    if (customizeApiSettings && answers.apiBaseUrl) {
+      setNested(configPatch, ["api", "baseUrl"], answers.apiBaseUrl);
+    }
+    if (customizeApiSettings && typeof answers.temperature === "number") {
+      setNested(configPatch, ["api", "temperature"], answers.temperature);
+    }
+    if (customizeApiSettings && typeof answers.maxOutputTokens === "number") {
+      setNested(
+        configPatch,
+        ["api", "maxOutputTokens"],
+        answers.maxOutputTokens,
+      );
+    }
+
+    if (customizeLimits && typeof answers.timeoutMs === "number") {
+      setNested(configPatch, ["execution", "timeoutMs"], answers.timeoutMs);
+    }
+    if (customizeLimits && typeof answers.maxInputChars === "number") {
+      setNested(
+        configPatch,
+        ["limits", "maxInputChars"],
+        answers.maxInputChars,
+      );
+    }
+    if (customizeLimits && typeof answers.maxRequestsPerMinute === "number") {
+      setNested(
+        configPatch,
+        ["limits", "maxRequestsPerMinute"],
+        answers.maxRequestsPerMinute,
+      );
+    }
+    if (customizeLimits && typeof answers.maxTokensPerDay === "number") {
+      setNested(
+        configPatch,
+        ["limits", "maxTokensPerDay"],
+        answers.maxTokensPerDay,
+      );
+    }
+    if (customizeLimits && typeof answers.sharedLimitsEnabled === "boolean") {
+      setNested(
+        configPatch,
+        ["limits", "shared", "enabled"],
+        answers.sharedLimitsEnabled,
+      );
+      if (answers.sharedLimitsEnabled) {
+        if (answers.redisUrl) {
+          setNested(
+            configPatch,
+            ["limits", "shared", "redisUrl"],
+            answers.redisUrl,
+          );
+        }
+        if (answers.redisKeyPrefix) {
+          setNested(
+            configPatch,
+            ["limits", "shared", "keyPrefix"],
+            answers.redisKeyPrefix,
+          );
+        }
+      }
+    }
+
+    const configToWrite =
+      mergeStrategy === "merge" && existingConfig
+        ? mergeDeep(existingConfig, configPatch)
+        : configPatch;
+
+    if (!opts.dryRun) {
+      await fs.mkdir(path.dirname(configPathResolved), {
+        recursive: true,
+        mode: 0o700,
+      });
+      const writeOptions = (await fileExists(configPathResolved))
+        ? "utf8"
+        : ({ encoding: "utf8", mode: 0o600 } as const);
+      await fs.writeFile(
+        configPathResolved,
+        JSON.stringify(configToWrite, null, 2) + "\n",
+        writeOptions,
+      );
+    }
+
+    writeLine();
+    writeLine("Setup summary");
+    writeLine(
+      `- Config file: ${configPathResolved}${opts.dryRun ? " (dry run)" : ""}`,
+    );
+    writeLine(`- Transport: ${answers.transportMode}`);
+    if (answers.transportMode === "http") {
+      writeLine(
+        `- HTTP host: ${answers.httpHost ?? defaults.transport.http.host}`,
+      );
+      writeLine(
+        `- HTTP port: ${answers.httpPort ?? defaults.transport.http.port}`,
+      );
+    }
+    writeLine(`- Auth mode: ${answers.authMode}`);
+    if (answers.authMode !== "api_key") {
+      writeLine(
+        `- Codex CLI command: ${answers.cliCommand ?? defaults.cli.command}`,
+      );
+      writeLine(
+        `- Codex CLI auth path: ${answers.cliAuthPath ?? defaults.auth.cliAuthPath}`,
+      );
+    }
+    if (answers.authMode !== "cli") {
+      writeLine(
+        `- API key env var: ${answers.apiKeyEnvVar ?? defaults.auth.apiKeyEnvVar}`,
+      );
+      writeLine(
+        `- API key file env var: ${answers.apiKeyFileEnvVar ?? defaults.auth.apiKeyFileEnvVar}`,
+      );
+    }
+    writeLine(`- Default model: ${answers.model ?? defaults.api.model}`);
+
+    writeLine();
+    writeLine("Next steps");
+    if (answers.authMode !== "cli") {
+      writeLine(
+        `- Set your API key (env var or file): ${answers.apiKeyEnvVar ?? defaults.auth.apiKeyEnvVar}`,
+      );
+    } else {
+      writeLine("- Ensure Codex CLI is logged in: codex login status");
+    }
+    writeLine("- Validate config: codex-mcp-bridge --doctor");
+    writeLine("- Start server: codex-mcp-bridge --stdio");
+    writeLine("- For client setup, see docs/USER_MANUAL.md");
+    writeLine();
+  } finally {
+    if (rl) rl.close();
+  }
+}

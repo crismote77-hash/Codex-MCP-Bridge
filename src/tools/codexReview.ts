@@ -10,6 +10,7 @@ import { redactString } from "../utils/redact.js";
 
 const inputSchema = {
   prompt: z.string().optional(),
+  cwd: z.string().optional(),
   base: z.string().optional(),
   commit: z.string().optional(),
   uncommitted: z.boolean().default(false),
@@ -24,6 +25,7 @@ const inputSchema = {
 
 type CodexReviewArgs = {
   prompt?: string;
+  cwd?: string;
   base?: string;
   commit?: string;
   uncommitted?: boolean;
@@ -40,11 +42,11 @@ function estimateTokensFromChars(chars: number): number {
   return Math.max(1, Math.ceil(chars / 4));
 }
 
-function buildCodexReviewArgs(args: CodexReviewArgs): {
+export function buildCodexReviewArgs(args: CodexReviewArgs): {
   args: string[];
   input: string;
 } {
-  const out: string[] = ["review", "-"];
+  const out: string[] = ["review"];
   if (args.uncommitted) out.push("--uncommitted");
   if (args.base) out.push("--base", args.base);
   if (args.commit) out.push("--commit", args.commit);
@@ -53,7 +55,10 @@ function buildCodexReviewArgs(args: CodexReviewArgs): {
     for (const entry of args.configOverrides) out.push("-c", entry);
   }
 
-  const input = args.prompt ? args.prompt.trim() : "";
+  const input = args.uncommitted ? "" : args.prompt ? args.prompt.trim() : "";
+  if (input) {
+    out.push("-");
+  }
   return { args: out, input };
 }
 
@@ -65,7 +70,8 @@ export function registerCodexReviewTool(
     "codex_review",
     {
       title: "Codex Review",
-      description: "Run Codex review (CLI-first, API fallback).",
+      description:
+        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd). Note: Codex CLI does not accept prompt with uncommitted; prompt is ignored when uncommitted=true.",
       inputSchema,
     },
     async (args: CodexReviewArgs) => {
@@ -112,6 +118,7 @@ export function registerCodexReviewTool(
             command: deps.config.cli.command,
             args: cliArgs,
             input: inputPrompt || "",
+            cwd: args.cwd,
             timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
           });
 

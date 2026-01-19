@@ -64,6 +64,7 @@ We model these as optional tool arguments and pass them through to the CLI.
 
 - `codex_review`
   - CLI mode: runs `codex review`.
+  - CLI mode supports `cwd` so callers can target a specific repo even if the MCP server starts elsewhere.
   - API mode: requires a diff payload and runs a review prompt against the API.
   - Enforces max input size for prompt + diff (API mode) and prompt (CLI mode).
 

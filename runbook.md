@@ -31,3 +31,7 @@
 
 - Fix configure-mcp-users TOML header regex; verified: npm test, npm run build, npm run lint; used script to configure Claude+Gemini for user crismote
 
+## 2026-01-19T19:36:01Z
+
+- Fix Codex CLI tool UX: codex_review uncommitted now omits prompt; add cwd support; codex_exec ask-for-approval ordering + auto-retry skip-git-repo-check; docs+tests; verified: npm test, npm run build, npm run lint
+

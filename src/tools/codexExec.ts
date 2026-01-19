@@ -58,7 +58,10 @@ function buildCodexExecArgs(
   args: CodexExecArgs,
   config: SharedDependencies["config"],
 ): string[] {
-  const out: string[] = ["exec", "-"];
+  const out: string[] = [];
+
+  if (args.askForApproval) out.push("--ask-for-approval", args.askForApproval);
+  out.push("exec", "-");
 
   if (args.useJson) out.push("--json");
   if (args.model) out.push("--model", args.model);
@@ -67,7 +70,6 @@ function buildCodexExecArgs(
   if (args.profile) out.push("--profile", args.profile);
   if (args.skipGitRepoCheck) out.push("--skip-git-repo-check");
   if (args.sandbox) out.push("--sandbox", args.sandbox);
-  if (args.askForApproval) out.push("--ask-for-approval", args.askForApproval);
   if (config.cli.color) out.push("--color", config.cli.color);
 
   if (args.cwd) out.push("--cd", args.cwd);
@@ -107,7 +109,8 @@ export function registerCodexExecTool(
     "codex_exec",
     {
       title: "Codex Exec",
-      description: "Run Codex exec (CLI-first, API fallback).",
+      description:
+        "Run Codex exec (CLI-first, API fallback). Use cwd for code-related tasks; use skipGitRepoCheck when running outside a git repo.",
       inputSchema,
     },
     async (args: CodexExecArgs) => {
@@ -153,19 +156,35 @@ export function registerCodexExecTool(
             ? null
             : path.join(os.tmpdir(), `codex-output-${randomUUID()}.txt`);
 
-          const cliArgs = buildCodexExecArgs(args, deps.config);
-          if (outputFile) {
-            cliArgs.push("--output-last-message", outputFile);
-          }
+          const buildArgs = (override?: Partial<CodexExecArgs>): string[] => {
+            const merged: CodexExecArgs = { ...args, ...(override ?? {}) };
+            const cliArgs = buildCodexExecArgs(merged, deps.config);
+            if (outputFile) cliArgs.push("--output-last-message", outputFile);
+            return cliArgs;
+          };
 
-          const result = await runCodexCommand({
-            command: deps.config.cli.command,
-            args: cliArgs,
-            input: prompt,
-            cwd: args.cwd,
-            env: process.env,
-            timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
-          });
+          const runOnce = async (
+            override?: Partial<CodexExecArgs>,
+          ): Promise<Awaited<ReturnType<typeof runCodexCommand>>> => {
+            return runCodexCommand({
+              command: deps.config.cli.command,
+              args: buildArgs(override),
+              input: prompt,
+              cwd: args.cwd,
+              env: process.env,
+              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+            });
+          };
+
+          let result = await runOnce();
+          if (
+            result.exitCode !== 0 &&
+            !args.skipGitRepoCheck &&
+            result.stderr.includes("Not inside a trusted directory") &&
+            result.stderr.includes("skip-git-repo-check")
+          ) {
+            result = await runOnce({ skipGitRepoCheck: true });
+          }
 
           if (result.exitCode !== 0) {
             const err = new CodexCliError(

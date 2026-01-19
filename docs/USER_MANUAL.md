@@ -201,6 +201,11 @@ Additional options:
 - Model selection:
   - The config sets defaults (`cli.defaultModel` for Codex CLI exec, `api.model` for API fallback).
   - You can override per request by passing `model` to `codex_exec` (and to `codex_review` in API mode).
+- Working directory:
+  - `codex_exec` supports `cwd` to run in a specific directory (recommended for code-related tasks).
+  - `codex_review` (CLI mode) must run inside a Git repository; use `cwd` if your MCP client launches servers from a different directory.
+- Review prompts:
+  - Codex CLI does not accept `prompt` together with `uncommitted`; the bridge ignores `prompt` when `uncommitted: true`.
 
 ---
 
@@ -248,4 +253,6 @@ Env overrides:
 
 - Missing Codex CLI auth: run `codex login` or set `OPENAI_API_KEY` and `CODEX_MCP_AUTH_MODE=api_key`.
 - CLI not found: ensure `codex` is on PATH or set `CODEX_MCP_CLI_COMMAND`.
+- "Not inside a trusted directory": for `codex_exec`, set `cwd` to your project directory or pass `skipGitRepoCheck: true`. For `codex_review`, run inside a git repo (`cwd`).
+- "Codex cannot access session files": ensure the process can write to `~/.codex` (ownership/permissions). If you must avoid Codex CLI files entirely, use API-key mode.
 - MCP tools missing: restart the client and verify config path.

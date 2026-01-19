@@ -68,6 +68,9 @@ Compatibility fallback:
   - `--cd`, `--add-dir`, `--skip-git-repo-check`
 - `codex review` supports:
   - `--uncommitted`, `--base <branch>`, `--commit <sha>`, `--title <text>`
+  - In current Codex CLI versions, `--uncommitted`/`--base`/`--commit` cannot be combined with a custom `[PROMPT]`.
+  - Some Codex CLI output may be emitted on stderr; the bridge falls back to stderr when stdout is empty.
+  - Some non-fatal conditions may exit with code `1`; the bridge treats exit code `1` as non-fatal unless the output looks like a fatal/usage error.
 
 We model these as optional tool arguments and pass them through to the CLI.
 

@@ -11,6 +11,24 @@ describe("buildCodexReviewArgs", () => {
     expect(input).toBe("");
   });
 
+  it("omits prompt stdin when base is set", () => {
+    const { args, input } = buildCodexReviewArgs({
+      base: "main",
+      prompt: "Review these changes",
+    });
+    expect(args).toEqual(["review", "--base", "main"]);
+    expect(input).toBe("");
+  });
+
+  it("omits prompt stdin when commit is set", () => {
+    const { args, input } = buildCodexReviewArgs({
+      commit: "deadbeef",
+      prompt: "Review these changes",
+    });
+    expect(args).toEqual(["review", "--commit", "deadbeef"]);
+    expect(input).toBe("");
+  });
+
   it("uses stdin prompt when provided", () => {
     const { args, input } = buildCodexReviewArgs({
       prompt: "Review the diff",
@@ -25,4 +43,3 @@ describe("buildCodexReviewArgs", () => {
     expect(input).toBe("");
   });
 });
-

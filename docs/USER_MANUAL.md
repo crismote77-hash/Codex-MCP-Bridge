@@ -248,13 +248,16 @@ Additional options:
 - General execution:
   - "Use codex_exec with prompt 'Explain this module and suggest improvements'"
 - Code review:
-  - "Use codex_review with prompt 'Review this diff for bugs and regressions'"
+  - Repo-based review (CLI mode): "Use codex_review with uncommitted=true and cwd=/path/to/repo"
+  - Diff review (API-key mode): "Use codex_review with a diff payload and prompt 'Review this diff for bugs and regressions'"
 
 ---
 
 ## Tool Notes
 
-- `codex_review` in API-key mode requires a `diff` payload; CLI mode uses local git state.
+- `codex_review` has two modes:
+  - CLI mode: uses local git state (requires `cwd` inside a git repo).
+  - API-key mode: requires a `diff` payload.
 - Model selection:
   - The config sets defaults (`cli.defaultModel` for Codex CLI exec, `api.model` for API fallback).
   - You can override per request by passing `model` to `codex_exec` (and to `codex_review` in API mode).
@@ -262,7 +265,7 @@ Additional options:
   - `codex_exec` supports `cwd` to run in a specific directory (recommended for code-related tasks).
   - `codex_review` (CLI mode) must run inside a Git repository; use `cwd` if your MCP client launches servers from a different directory.
 - Review prompts:
-  - Codex CLI does not accept `prompt` together with `uncommitted`; the bridge ignores `prompt` when `uncommitted: true`.
+  - Codex CLI does not accept `prompt` together with `uncommitted`, `base`, or `commit`; the bridge ignores `prompt` when any of those are set.
 
 ---
 
@@ -311,6 +314,8 @@ Env overrides:
 - Missing Codex CLI auth: run `codex login` or set `OPENAI_API_KEY` and `CODEX_MCP_AUTH_MODE=api_key`.
 - CLI not found: ensure `codex` is on PATH or set `CODEX_MCP_CLI_COMMAND`.
 - "Not inside a trusted directory": for `codex_exec`, set `cwd` to your project directory or pass `skipGitRepoCheck: true`. For `codex_review`, run inside a git repo (`cwd`).
+- "Diff reviews require API-key auth": set `CODEX_MCP_AUTH_MODE=api_key` and provide an API key, or use repo-based review in CLI mode (`uncommitted`/`base`/`commit` + `cwd`).
+- "codex_review ignores prompt": Codex CLI does not accept `prompt` with `uncommitted`/`base`/`commit`, so the bridge ignores it.
 - "Model is not supported when using Codex with a ChatGPT account" (CLI mode): set a supported `model`/`cli.defaultModel`. If you omit `model`, `codex_exec` auto-retries once without the bridge's default `--model` override and lets Codex CLI choose its default.
 - "Codex cannot access session files": ensure the process can write to `~/.codex` (ownership/permissions). If you must avoid Codex CLI files entirely, use API-key mode.
 - MCP tools missing: restart the client and verify config path.

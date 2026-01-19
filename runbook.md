@@ -43,3 +43,7 @@
 
 - Docs: expand USER_MANUAL and TECHNICAL (wizard walkthrough, advanced option explanations, model selection guidance, doctor/print-config); verified: npm test, npm run build, npm run lint; next: user re-test setup + Claude/Gemini tools
 
+## 2026-01-19T21:07:37Z
+
+- codex_review fixes: ignore prompt with uncommitted/base/commit; use stderr fallback output; treat exit code 1 as non-fatal unless fatal/usage; diff reviews require API key; add tests+docs; verified: npm test, npm run build, npm run lint; next: user re-test in Claude/Gemini
+

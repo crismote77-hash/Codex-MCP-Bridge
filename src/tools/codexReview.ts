@@ -55,7 +55,8 @@ export function buildCodexReviewArgs(args: CodexReviewArgs): {
     for (const entry of args.configOverrides) out.push("-c", entry);
   }
 
-  const input = args.uncommitted ? "" : args.prompt ? args.prompt.trim() : "";
+  const ignorePrompt = Boolean(args.uncommitted || args.base || args.commit);
+  const input = ignorePrompt ? "" : args.prompt ? args.prompt.trim() : "";
   if (input) {
     out.push("-");
   }
@@ -71,7 +72,7 @@ export function registerCodexReviewTool(
     {
       title: "Codex Review",
       description:
-        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd). Note: Codex CLI does not accept prompt with uncommitted; prompt is ignored when uncommitted=true.",
+        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd). Note: Codex CLI does not accept prompt with uncommitted/base/commit; prompt is ignored when those flags are used. Diff-only reviews require API-key mode.",
       inputSchema,
     },
     async (args: CodexReviewArgs) => {
@@ -81,15 +82,56 @@ export function registerCodexReviewTool(
         await deps.rateLimiter.checkOrThrow();
         await deps.dailyBudget.checkOrThrow();
 
-        const auth = resolveAuth({
-          mode: deps.config.auth.mode,
-          cliAuthPath: deps.config.auth.cliAuthPath,
-          apiKey: deps.config.auth.apiKey,
-          apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
-          apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
-          apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
-          env: process.env,
-        });
+        const diff = args.diff?.trim();
+        const wantsDiffReview = Boolean(diff);
+
+        if (wantsDiffReview && deps.config.auth.mode === "cli") {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: "Diff reviews require API-key auth. Set CODEX_MCP_AUTH_MODE=api_key and provide an API key (OPENAI_API_KEY / OPENAI_API_KEY_FILE), or omit diff and run a repo-based review (uncommitted/base/commit) in CLI mode.",
+              },
+            ],
+          };
+        }
+
+        let auth: ReturnType<typeof resolveAuth>;
+        if (wantsDiffReview) {
+          try {
+            auth = resolveAuth({
+              mode: "api_key",
+              cliAuthPath: deps.config.auth.cliAuthPath,
+              apiKey: deps.config.auth.apiKey,
+              apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
+              apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
+              apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
+              env: process.env,
+            });
+          } catch (resolveError) {
+            const formatted = formatToolError(resolveError);
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: `Diff reviews require API-key auth.\n${formatted.message}`,
+                },
+              ],
+            };
+          }
+        } else {
+          auth = resolveAuth({
+            mode: deps.config.auth.mode,
+            cliAuthPath: deps.config.auth.cliAuthPath,
+            apiKey: deps.config.auth.apiKey,
+            apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
+            apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
+            apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
+            env: process.env,
+          });
+        }
 
         let text = "";
         let inputTokens = 0;
@@ -119,10 +161,22 @@ export function registerCodexReviewTool(
             args: cliArgs,
             input: inputPrompt || "",
             cwd: args.cwd,
+            env: process.env,
             timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
           });
 
-          if (result.exitCode !== 0) {
+          const stdout = result.stdout.trim();
+          const stderr = result.stderr.trim();
+          const combined = [stdout, stderr].filter(Boolean).join("\n");
+          const output = stdout || stderr;
+
+          const fatal =
+            combined.toLowerCase().includes("fatal error") ||
+            (combined.toLowerCase().includes("error:") &&
+              combined.toLowerCase().includes("usage:")) ||
+            combined.includes("Not inside a trusted directory");
+
+          if (result.exitCode !== 0 && !(result.exitCode === 1 && !fatal)) {
             const err = new CodexCliError(
               `Codex CLI exited with ${result.exitCode}`,
             );
@@ -131,9 +185,9 @@ export function registerCodexReviewTool(
             throw err;
           }
 
-          text = result.stdout.trim();
+          text = output;
           inputTokens = estimateTokensFromChars(inputPrompt.length || 1);
-          outputTokens = estimateTokensFromChars(text.length);
+          outputTokens = estimateTokensFromChars(text.length || 1);
 
           await deps.dailyBudget.commit(
             "codex_review",
@@ -143,7 +197,6 @@ export function registerCodexReviewTool(
           );
           committed = true;
         } else {
-          const diff = args.diff?.trim();
           if (!diff) {
             throw new Error("API mode requires a diff payload.");
           }

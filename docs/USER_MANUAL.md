@@ -198,6 +198,9 @@ Additional options:
 ## Tool Notes
 
 - `codex_review` in API-key mode requires a `diff` payload; CLI mode uses local git state.
+- Model selection:
+  - The config sets defaults (`cli.defaultModel` for Codex CLI exec, `api.model` for API fallback).
+  - You can override per request by passing `model` to `codex_exec` (and to `codex_review` in API mode).
 
 ---
 

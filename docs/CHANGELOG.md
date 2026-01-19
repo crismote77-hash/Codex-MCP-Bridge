@@ -8,7 +8,7 @@
 - Document env/transport options, tool notes, and multiuser script flags.
 - Add error-path tests for budget handling.
 - Add guided setup wizard (`--setup`) with non-interactive mode.
-- Improve setup wizard safety + UX (use existing config as defaults, warn on non-loopback HTTP host, print global vs source run commands).
+- Improve setup wizard safety + UX (use existing config as defaults, separate default model from advanced options, warn on non-loopback HTTP host, print global vs source run commands).
 - Fix install docs for non-npm distribution; add `npm run setup`/`npm run doctor` and `prepare` build hook.
 
 ## 0.1.0 (2026-01-19)

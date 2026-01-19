@@ -23,3 +23,7 @@
 
 - Improve setup wizard defaults + safety + next-step commands; fix install docs + add prepare/setup/doctor scripts; verified: npm test, npm run build, npm run lint; next: user re-test setup flow
 
+## 2026-01-19T19:07:34Z
+
+- Wizard UX: default model in basic flow; advanced settings gated; summary reflects effective config; docs clarify per-request model override; verified: npm test, npm run build, npm run lint; next: user try interactive wizard
+

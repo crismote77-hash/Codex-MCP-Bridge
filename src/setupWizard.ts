@@ -457,89 +457,106 @@ export async function runSetupWizard(
         )
       : authPromptDefault;
 
+    const existingModel =
+      getNestedString(effectiveExistingConfig, ["api", "model"]) ??
+      getNestedString(effectiveExistingConfig, ["cli", "defaultModel"]);
+    const modelPromptDefault = existingModel ?? defaults.api.model;
+    const model =
+      opts.model ??
+      (await askText(
+        "Default model (used unless overridden)",
+        modelPromptDefault,
+        false,
+      ));
+
+    let wantsAdvanced = false;
+    if (shouldPrompt) {
+      writeLine();
+      wantsAdvanced = await askConfirm(
+        "Configure advanced settings (CLI paths, env vars, API settings, limits)?",
+        false,
+      );
+    }
+    if (wantsAdvanced) {
+      writeLine();
+      writeLine("Advanced settings");
+    }
+
     let cliCommand = opts.cliCommand;
     let cliAuthPath = opts.cliAuthPath;
-    let customizeCli = Boolean(opts.cliCommand) || Boolean(opts.cliAuthPath);
-    if (authMode !== "api_key") {
-      if (shouldPrompt) {
-        customizeCli = await askConfirm(
-          "Customize Codex CLI command or auth path?",
+    const hasCliOverrides =
+      opts.cliCommand !== undefined || opts.cliAuthPath !== undefined;
+    let customizeCli = hasCliOverrides;
+    if (authMode !== "api_key" && wantsAdvanced && !hasCliOverrides) {
+      customizeCli = await askConfirm(
+        "Customize Codex CLI command or auth path?",
+        false,
+      );
+      if (customizeCli) {
+        const existingCliCommand = getNestedString(effectiveExistingConfig, [
+          "cli",
+          "command",
+        ]);
+        const existingCliAuthPath = getNestedString(effectiveExistingConfig, [
+          "auth",
+          "cliAuthPath",
+        ]);
+        cliCommand = await askText(
+          "Codex CLI command",
+          existingCliCommand ?? defaults.cli.command,
           false,
         );
-        if (customizeCli) {
-          const existingCliCommand = getNestedString(effectiveExistingConfig, [
-            "cli",
-            "command",
-          ]);
-          const existingCliAuthPath = getNestedString(effectiveExistingConfig, [
-            "auth",
-            "cliAuthPath",
-          ]);
-          cliCommand = await askText(
-            "Codex CLI command",
-            existingCliCommand ?? defaults.cli.command,
-            false,
-          );
-          cliAuthPath = await askText(
-            "Codex CLI auth path",
-            existingCliAuthPath ?? defaults.auth.cliAuthPath,
-            false,
-          );
-        }
+        cliAuthPath = await askText(
+          "Codex CLI auth path",
+          existingCliAuthPath ?? defaults.auth.cliAuthPath,
+          false,
+        );
       }
     }
 
     let apiKeyEnvVar = opts.apiKeyEnvVar;
     let apiKeyEnvVarAlt = opts.apiKeyEnvVarAlt;
     let apiKeyFileEnvVar = opts.apiKeyFileEnvVar;
-    let customizeApiKeyEnv =
+    const hasApiKeyEnvOverrides =
       opts.apiKeyEnvVar !== undefined ||
       opts.apiKeyEnvVarAlt !== undefined ||
       opts.apiKeyFileEnvVar !== undefined;
-    if (authMode !== "cli") {
-      if (shouldPrompt) {
-        customizeApiKeyEnv = await askConfirm(
-          "Customize API key env var names?",
+    let customizeApiKeyEnv = hasApiKeyEnvOverrides;
+    if (authMode !== "cli" && wantsAdvanced && !hasApiKeyEnvOverrides) {
+      customizeApiKeyEnv = await askConfirm(
+        "Customize API key env var names?",
+        false,
+      );
+      if (customizeApiKeyEnv) {
+        const existingApiKeyEnvVar = getNestedString(effectiveExistingConfig, [
+          "auth",
+          "apiKeyEnvVar",
+        ]);
+        const existingApiKeyEnvVarAlt = getNestedString(
+          effectiveExistingConfig,
+          ["auth", "apiKeyEnvVarAlt"],
+        );
+        const existingApiKeyFileEnvVar = getNestedString(
+          effectiveExistingConfig,
+          ["auth", "apiKeyFileEnvVar"],
+        );
+        apiKeyEnvVar = await askText(
+          "Primary API key env var",
+          existingApiKeyEnvVar ?? defaults.auth.apiKeyEnvVar,
           false,
         );
-        if (customizeApiKeyEnv) {
-          const existingApiKeyEnvVar = getNestedString(
-            effectiveExistingConfig,
-            ["auth", "apiKeyEnvVar"],
-          );
-          const existingApiKeyEnvVarAlt = getNestedString(
-            effectiveExistingConfig,
-            ["auth", "apiKeyEnvVarAlt"],
-          );
-          const existingApiKeyFileEnvVar = getNestedString(
-            effectiveExistingConfig,
-            ["auth", "apiKeyFileEnvVar"],
-          );
-          apiKeyEnvVar = await askText(
-            "Primary API key env var",
-            existingApiKeyEnvVar ?? defaults.auth.apiKeyEnvVar,
-            false,
-          );
-          apiKeyEnvVarAlt = await askText(
-            "Alternate API key env var (optional)",
-            existingApiKeyEnvVarAlt ?? defaults.auth.apiKeyEnvVarAlt,
-            true,
-          );
-          apiKeyFileEnvVar = await askText(
-            "API key file env var",
-            existingApiKeyFileEnvVar ?? defaults.auth.apiKeyFileEnvVar,
-            false,
-          );
-        }
+        apiKeyEnvVarAlt = await askText(
+          "Alternate API key env var (optional)",
+          existingApiKeyEnvVarAlt ?? defaults.auth.apiKeyEnvVarAlt,
+          true,
+        );
+        apiKeyFileEnvVar = await askText(
+          "API key file env var",
+          existingApiKeyFileEnvVar ?? defaults.auth.apiKeyFileEnvVar,
+          false,
+        );
       }
     }
-
-    const existingModel =
-      getNestedString(effectiveExistingConfig, ["api", "model"]) ??
-      getNestedString(effectiveExistingConfig, ["cli", "defaultModel"]);
-    const modelPromptDefault = existingModel ?? defaults.api.model;
-    const model =
-      opts.model ?? (await askText("Default model", modelPromptDefault, false));
 
     if (transportMode === "http") {
       const hostValue =
@@ -566,45 +583,41 @@ export async function runSetupWizard(
     let apiBaseUrl = opts.apiBaseUrl;
     let temperature = opts.temperature;
     let maxOutputTokens = opts.maxOutputTokens;
-    let customizeApiSettings =
+    const hasApiOverrides =
       opts.apiBaseUrl !== undefined ||
       opts.temperature !== undefined ||
       opts.maxOutputTokens !== undefined;
-    if (authMode !== "cli") {
-      if (shouldPrompt) {
-        customizeApiSettings = await askConfirm(
-          "Customize API settings?",
+    let customizeApiSettings = hasApiOverrides;
+    if (authMode !== "cli" && wantsAdvanced && !hasApiOverrides) {
+      customizeApiSettings = await askConfirm("Customize API settings?", false);
+      if (customizeApiSettings) {
+        const existingApiBaseUrl = getNestedString(effectiveExistingConfig, [
+          "api",
+          "baseUrl",
+        ]);
+        const existingTemperature = getNestedNumber(effectiveExistingConfig, [
+          "api",
+          "temperature",
+        ]);
+        const existingMaxOutputTokens = getNestedNumber(
+          effectiveExistingConfig,
+          ["api", "maxOutputTokens"],
+        );
+        apiBaseUrl = await askText(
+          "API base URL",
+          existingApiBaseUrl ?? defaults.api.baseUrl,
           false,
         );
-        if (customizeApiSettings) {
-          const existingApiBaseUrl = getNestedString(effectiveExistingConfig, [
-            "api",
-            "baseUrl",
-          ]);
-          const existingTemperature = getNestedNumber(effectiveExistingConfig, [
-            "api",
-            "temperature",
-          ]);
-          const existingMaxOutputTokens = getNestedNumber(
-            effectiveExistingConfig,
-            ["api", "maxOutputTokens"],
-          );
-          apiBaseUrl = await askText(
-            "API base URL",
-            existingApiBaseUrl ?? defaults.api.baseUrl,
-            false,
-          );
-          temperature = await askFloat(
-            "Temperature (0-2)",
-            existingTemperature ?? defaults.api.temperature,
-            0,
-            2,
-          );
-          maxOutputTokens = await askInt(
-            "Max output tokens",
-            existingMaxOutputTokens ?? defaults.api.maxOutputTokens,
-          );
-        }
+        temperature = await askFloat(
+          "Temperature (0-2)",
+          existingTemperature ?? defaults.api.temperature,
+          0,
+          2,
+        );
+        maxOutputTokens = await askInt(
+          "Max output tokens",
+          existingMaxOutputTokens ?? defaults.api.maxOutputTokens,
+        );
       }
     }
 
@@ -615,7 +628,7 @@ export async function runSetupWizard(
     let sharedLimitsEnabled = opts.sharedLimitsEnabled;
     let redisUrl = opts.redisUrl;
     let redisKeyPrefix = opts.redisKeyPrefix;
-    let customizeLimits =
+    const hasLimitsOverrides =
       opts.timeoutMs !== undefined ||
       opts.maxInputChars !== undefined ||
       opts.maxRequestsPerMinute !== undefined ||
@@ -623,8 +636,8 @@ export async function runSetupWizard(
       opts.sharedLimitsEnabled !== undefined ||
       opts.redisUrl !== undefined ||
       opts.redisKeyPrefix !== undefined;
-
-    if (shouldPrompt) {
+    let customizeLimits = hasLimitsOverrides;
+    if (wantsAdvanced && !hasLimitsOverrides) {
       customizeLimits = await askConfirm(
         "Configure limits and timeouts?",
         false,
@@ -861,36 +874,54 @@ export async function runSetupWizard(
 
     writeLine();
     writeLine("Setup summary");
+    const summaryTransportMode =
+      normalizeTransport(
+        getNestedString(configToWrite, ["transport", "mode"]),
+      ) ?? defaults.transport.mode;
+    const summaryHttpHost =
+      getNestedString(configToWrite, ["transport", "http", "host"]) ??
+      defaults.transport.http.host;
+    const summaryHttpPort =
+      getNestedNumber(configToWrite, ["transport", "http", "port"]) ??
+      defaults.transport.http.port;
+    const summaryAuthMode =
+      normalizeAuth(getNestedString(configToWrite, ["auth", "mode"])) ??
+      defaults.auth.mode;
+    const summaryCliCommand =
+      getNestedString(configToWrite, ["cli", "command"]) ??
+      defaults.cli.command;
+    const summaryCliAuthPath =
+      getNestedString(configToWrite, ["auth", "cliAuthPath"]) ??
+      defaults.auth.cliAuthPath;
+    const summaryApiKeyEnvVar =
+      getNestedString(configToWrite, ["auth", "apiKeyEnvVar"]) ??
+      defaults.auth.apiKeyEnvVar;
+    const summaryApiKeyFileEnvVar =
+      getNestedString(configToWrite, ["auth", "apiKeyFileEnvVar"]) ??
+      defaults.auth.apiKeyFileEnvVar;
+    const summaryModel =
+      getNestedString(configToWrite, ["api", "model"]) ??
+      getNestedString(configToWrite, ["cli", "defaultModel"]) ??
+      defaults.api.model;
+
     writeLine(
       `- Config file: ${configPathResolved}${opts.dryRun ? " (dry run)" : ""}`,
     );
-    writeLine(`- Transport: ${answers.transportMode}`);
-    if (answers.transportMode === "http") {
-      writeLine(
-        `- HTTP host: ${answers.httpHost ?? defaults.transport.http.host}`,
-      );
-      writeLine(
-        `- HTTP port: ${answers.httpPort ?? defaults.transport.http.port}`,
-      );
+    writeLine(`- Transport: ${summaryTransportMode}`);
+    if (summaryTransportMode === "http") {
+      writeLine(`- HTTP host: ${summaryHttpHost}`);
+      writeLine(`- HTTP port: ${summaryHttpPort}`);
     }
-    writeLine(`- Auth mode: ${answers.authMode}`);
-    if (answers.authMode !== "api_key") {
-      writeLine(
-        `- Codex CLI command: ${answers.cliCommand ?? defaults.cli.command}`,
-      );
-      writeLine(
-        `- Codex CLI auth path: ${answers.cliAuthPath ?? defaults.auth.cliAuthPath}`,
-      );
+    writeLine(`- Auth mode: ${summaryAuthMode}`);
+    if (summaryAuthMode !== "api_key") {
+      writeLine(`- Codex CLI command: ${summaryCliCommand}`);
+      writeLine(`- Codex CLI auth path: ${summaryCliAuthPath}`);
     }
-    if (answers.authMode !== "cli") {
-      writeLine(
-        `- API key env var: ${answers.apiKeyEnvVar ?? defaults.auth.apiKeyEnvVar}`,
-      );
-      writeLine(
-        `- API key file env var: ${answers.apiKeyFileEnvVar ?? defaults.auth.apiKeyFileEnvVar}`,
-      );
+    if (summaryAuthMode !== "cli") {
+      writeLine(`- API key env var: ${summaryApiKeyEnvVar}`);
+      writeLine(`- API key file env var: ${summaryApiKeyFileEnvVar}`);
     }
-    writeLine(`- Default model: ${answers.model ?? defaults.api.model}`);
+    writeLine(`- Default model: ${summaryModel}`);
 
     writeLine();
     writeLine("Next steps");
@@ -898,10 +929,8 @@ export async function runSetupWizard(
       ? path.resolve(process.argv[1])
       : path.resolve("dist/index.js");
     const nodeInvoke = `node ${JSON.stringify(scriptPath)}`;
-    if (answers.authMode !== "cli") {
-      writeLine(
-        `- Set your API key (env var or file): ${answers.apiKeyEnvVar ?? defaults.auth.apiKeyEnvVar}`,
-      );
+    if (summaryAuthMode !== "cli") {
+      writeLine(`- Set your API key (env var or file): ${summaryApiKeyEnvVar}`);
     } else {
       writeLine("- Ensure Codex CLI is logged in: codex login status");
     }

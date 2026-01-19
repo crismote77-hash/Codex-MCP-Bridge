@@ -123,6 +123,7 @@ The script supports `--all-users` and `--user <name>`.
 The CLI supports a guided setup flow:
 - `codex-mcp-bridge --setup` (interactive)
 - `codex-mcp-bridge --setup --non-interactive` (uses defaults/flags)
+- From a local clone: `npm run setup` (builds `dist/` then runs `--setup`)
 
 Wizard behavior:
 - Writes `~/.codex-mcp-bridge/config.json` (or `--config <path>`).

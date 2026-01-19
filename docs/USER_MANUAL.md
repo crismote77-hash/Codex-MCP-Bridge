@@ -8,9 +8,20 @@ Expose Codex CLI capabilities to other AI CLIs via MCP. This runs locally as an 
 
 ## Quick Start
 
-1) Install:
+1) Install (choose one):
+
+**A) Global install (GitHub)**
 ```bash
-npm install -g codex-mcp-bridge
+npm install -g git+ssh://git@github.com:crismote77-hash/Codex-MCP-Bridge.git
+# or: npm install -g git+https://github.com/crismote77-hash/Codex-MCP-Bridge.git
+```
+
+**B) From source (local clone)**
+```bash
+git clone git@github.com:crismote77-hash/Codex-MCP-Bridge.git
+cd Codex-MCP-Bridge
+npm install
+npm run setup
 ```
 
 2) Authenticate (recommended):
@@ -32,6 +43,12 @@ codex login
 Use the guided wizard to create or update your config:
 ```bash
 codex-mcp-bridge --setup
+```
+
+If you're running from a local clone (no global install), use:
+```bash
+npm run setup
+# or: npm run build && node dist/index.js --setup
 ```
 
 Non-interactive example (accept defaults, set auth mode + model):
@@ -79,6 +96,10 @@ If `CODEX_MCP_AUTH_MODE` is unset, the bridge tries:
 ## CLI Integration
 
 MCP servers run as child processes of your CLI. Ensure any auth env vars are available where your CLI is launched.
+
+If `codex-mcp-bridge` is not on your `PATH` (for example, you're running from a local clone), use:
+- `command`: `node`
+- `args`: `["/path/to/Codex-MCP-Bridge/dist/index.js", "--stdio"]`
 
 **Codex CLI** (`~/.codex/config.toml` or `$CODEX_HOME/config.toml`):
 ```toml

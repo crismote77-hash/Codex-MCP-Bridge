@@ -8,10 +8,13 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "npm run build",
     "prebuild": "node scripts/prebuild.mjs",
     "build": "tsc",
     "postbuild": "node scripts/postbuild.mjs",
     "start": "node dist/index.js",
+    "setup": "npm run build && node dist/index.js --setup",
+    "doctor": "npm run build && node dist/index.js --doctor",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -47,7 +50,7 @@
     "prettier": "^3.8.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.53.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.0.17"
   },
   "engines": {
     "node": ">=20.0.0"

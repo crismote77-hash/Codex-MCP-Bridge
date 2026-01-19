@@ -70,6 +70,53 @@ function writeLine(message = ""): void {
   stderr.write(`${message}\n`);
 }
 
+function getNestedValue(
+  target: Record<string, unknown> | null | undefined,
+  pathParts: string[],
+): unknown {
+  let cursor: unknown = target;
+  for (const part of pathParts) {
+    if (!isRecord(cursor)) return undefined;
+    cursor = cursor[part];
+  }
+  return cursor;
+}
+
+function getNestedString(
+  target: Record<string, unknown> | null | undefined,
+  pathParts: string[],
+): string | undefined {
+  const value = getNestedValue(target, pathParts);
+  return typeof value === "string" ? value : undefined;
+}
+
+function getNestedNumber(
+  target: Record<string, unknown> | null | undefined,
+  pathParts: string[],
+): number | undefined {
+  const value = getNestedValue(target, pathParts);
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function getNestedBoolean(
+  target: Record<string, unknown> | null | undefined,
+  pathParts: string[],
+): boolean | undefined {
+  const value = getNestedValue(target, pathParts);
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "localhost" ||
+    normalized === "::1"
+  );
+}
+
 function formatDefault(value: string | number | undefined): string {
   if (value === undefined || value === "") return "";
   return ` [${value}]`;
@@ -88,6 +135,12 @@ function normalizeAuth(value: string | undefined): AuthMode | null {
 function parsePositiveInt(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function parsePort(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) return null;
   return parsed;
 }
 
@@ -258,6 +311,21 @@ export async function runSetupWizard(
     }
   };
 
+  const askPort = async (
+    prompt: string,
+    defaultValue?: number,
+  ): Promise<number | undefined> => {
+    if (!shouldPrompt) return defaultValue;
+    const suffix = formatDefault(defaultValue);
+    while (true) {
+      const answer = (await ask(`${prompt}${suffix} `)).trim();
+      if (!answer) return defaultValue;
+      const parsed = parsePort(answer);
+      if (parsed !== null) return parsed;
+      writeLine("Enter a valid port (1-65535).");
+    }
+  };
+
   const askFloat = async (
     prompt: string,
     defaultValue: number,
@@ -327,45 +395,67 @@ export async function runSetupWizard(
       }
     }
 
-    const transportDefault = opts.transport ?? defaults.transport.mode;
-    const transportMode =
-      normalizeTransport(transportDefault) ??
-      (shouldPrompt
-        ? await askChoice<TransportMode>(
-            "Select transport mode:",
-            [
-              { value: "stdio", label: "stdio (recommended for MCP clients)" },
-              { value: "http", label: "http (Streamable HTTP server)" },
-            ],
-            defaults.transport.mode,
-          )
-        : defaults.transport.mode);
+    const effectiveExistingConfig = existingConfig ?? {};
 
-    const httpHost =
-      transportMode === "http"
-        ? (opts.httpHost ??
-          (await askText("HTTP host", defaults.transport.http.host, false)))
-        : undefined;
-    const httpPort =
-      transportMode === "http"
-        ? (opts.httpPort ??
-          (await askInt("HTTP port", defaults.transport.http.port)))
-        : undefined;
+    const existingTransportMode = normalizeTransport(
+      getNestedString(effectiveExistingConfig, ["transport", "mode"]),
+    );
+    const transportPromptDefault =
+      opts.transport ?? existingTransportMode ?? defaults.transport.mode;
+    const transportMode = shouldPrompt
+      ? await askChoice<TransportMode>(
+          "Select transport mode:",
+          [
+            { value: "stdio", label: "stdio (recommended for MCP clients)" },
+            { value: "http", label: "http (Streamable HTTP server)" },
+          ],
+          transportPromptDefault,
+        )
+      : transportPromptDefault;
 
-    const authDefault = opts.authMode ?? defaults.auth.mode;
-    const authMode =
-      normalizeAuth(authDefault) ??
-      (shouldPrompt
-        ? await askChoice<AuthMode>(
-            "Select authentication mode:",
-            [
-              { value: "auto", label: "auto (CLI first, API key fallback)" },
-              { value: "cli", label: "cli (requires Codex CLI login)" },
-              { value: "api_key", label: "api_key (env var or key file)" },
-            ],
-            defaults.auth.mode,
-          )
-        : defaults.auth.mode);
+    let httpHost: string | undefined;
+    let httpPort: number | undefined;
+    if (transportMode === "http") {
+      const existingHost = getNestedString(effectiveExistingConfig, [
+        "transport",
+        "http",
+        "host",
+      ]);
+      const defaultHost = existingHost ?? defaults.transport.http.host;
+      httpHost =
+        opts.httpHost ?? (await askText("HTTP host", defaultHost, false));
+
+      const existingPort = getNestedNumber(effectiveExistingConfig, [
+        "transport",
+        "http",
+        "port",
+      ]);
+      const defaultPort = existingPort ?? defaults.transport.http.port;
+      if (
+        typeof opts.httpPort === "number" &&
+        (opts.httpPort < 1 || opts.httpPort > 65535)
+      ) {
+        throw new Error("HTTP port must be between 1 and 65535.");
+      }
+      httpPort = opts.httpPort ?? (await askPort("HTTP port", defaultPort));
+    }
+
+    const existingAuthMode = normalizeAuth(
+      getNestedString(effectiveExistingConfig, ["auth", "mode"]),
+    );
+    const authPromptDefault =
+      opts.authMode ?? existingAuthMode ?? defaults.auth.mode;
+    const authMode = shouldPrompt
+      ? await askChoice<AuthMode>(
+          "Select authentication mode:",
+          [
+            { value: "auto", label: "auto (CLI first, API key fallback)" },
+            { value: "cli", label: "cli (requires Codex CLI login)" },
+            { value: "api_key", label: "api_key (env var or key file)" },
+          ],
+          authPromptDefault,
+        )
+      : authPromptDefault;
 
     let cliCommand = opts.cliCommand;
     let cliAuthPath = opts.cliAuthPath;
@@ -377,14 +467,22 @@ export async function runSetupWizard(
           false,
         );
         if (customizeCli) {
+          const existingCliCommand = getNestedString(effectiveExistingConfig, [
+            "cli",
+            "command",
+          ]);
+          const existingCliAuthPath = getNestedString(effectiveExistingConfig, [
+            "auth",
+            "cliAuthPath",
+          ]);
           cliCommand = await askText(
             "Codex CLI command",
-            defaults.cli.command,
+            existingCliCommand ?? defaults.cli.command,
             false,
           );
           cliAuthPath = await askText(
             "Codex CLI auth path",
-            defaults.auth.cliAuthPath,
+            existingCliAuthPath ?? defaults.auth.cliAuthPath,
             false,
           );
         }
@@ -405,27 +503,65 @@ export async function runSetupWizard(
           false,
         );
         if (customizeApiKeyEnv) {
+          const existingApiKeyEnvVar = getNestedString(
+            effectiveExistingConfig,
+            ["auth", "apiKeyEnvVar"],
+          );
+          const existingApiKeyEnvVarAlt = getNestedString(
+            effectiveExistingConfig,
+            ["auth", "apiKeyEnvVarAlt"],
+          );
+          const existingApiKeyFileEnvVar = getNestedString(
+            effectiveExistingConfig,
+            ["auth", "apiKeyFileEnvVar"],
+          );
           apiKeyEnvVar = await askText(
             "Primary API key env var",
-            defaults.auth.apiKeyEnvVar,
+            existingApiKeyEnvVar ?? defaults.auth.apiKeyEnvVar,
             false,
           );
           apiKeyEnvVarAlt = await askText(
             "Alternate API key env var (optional)",
-            defaults.auth.apiKeyEnvVarAlt,
+            existingApiKeyEnvVarAlt ?? defaults.auth.apiKeyEnvVarAlt,
             true,
           );
           apiKeyFileEnvVar = await askText(
             "API key file env var",
-            defaults.auth.apiKeyFileEnvVar,
+            existingApiKeyFileEnvVar ?? defaults.auth.apiKeyFileEnvVar,
             false,
           );
         }
       }
     }
 
+    const existingModel =
+      getNestedString(effectiveExistingConfig, ["api", "model"]) ??
+      getNestedString(effectiveExistingConfig, ["cli", "defaultModel"]);
+    const modelPromptDefault = existingModel ?? defaults.api.model;
     const model =
-      opts.model ?? (await askText("Default model", defaults.api.model, false));
+      opts.model ?? (await askText("Default model", modelPromptDefault, false));
+
+    if (transportMode === "http") {
+      const hostValue =
+        httpHost ??
+        getNestedString(effectiveExistingConfig, ["transport", "http", "host"]);
+      if (hostValue && !isLoopbackHost(hostValue)) {
+        writeLine();
+        writeLine(
+          `Warning: HTTP host "${hostValue}" is not loopback. This may expose the MCP server on your network.`,
+        );
+        writeLine(
+          "Recommended: use 127.0.0.1 unless you understand the risks.",
+        );
+        if (shouldPrompt) {
+          const proceed = await askConfirm("Continue with this host?", false);
+          if (!proceed) {
+            writeLine("Setup canceled.");
+            return;
+          }
+        }
+      }
+    }
 
     let apiBaseUrl = opts.apiBaseUrl;
     let temperature = opts.temperature;
@@ -441,20 +577,32 @@ export async function runSetupWizard(
           false,
         );
         if (customizeApiSettings) {
+          const existingApiBaseUrl = getNestedString(effectiveExistingConfig, [
+            "api",
+            "baseUrl",
+          ]);
+          const existingTemperature = getNestedNumber(effectiveExistingConfig, [
+            "api",
+            "temperature",
+          ]);
+          const existingMaxOutputTokens = getNestedNumber(
+            effectiveExistingConfig,
+            ["api", "maxOutputTokens"],
+          );
           apiBaseUrl = await askText(
             "API base URL",
-            defaults.api.baseUrl,
+            existingApiBaseUrl ?? defaults.api.baseUrl,
             false,
           );
           temperature = await askFloat(
             "Temperature (0-2)",
-            defaults.api.temperature,
+            existingTemperature ?? defaults.api.temperature,
             0,
             2,
           );
           maxOutputTokens = await askInt(
             "Max output tokens",
-            defaults.api.maxOutputTokens,
+            existingMaxOutputTokens ?? defaults.api.maxOutputTokens,
           );
         }
       }
@@ -482,35 +630,65 @@ export async function runSetupWizard(
         false,
       );
       if (customizeLimits) {
+        const existingTimeoutMs = getNestedNumber(effectiveExistingConfig, [
+          "execution",
+          "timeoutMs",
+        ]);
+        const existingMaxInputChars = getNestedNumber(effectiveExistingConfig, [
+          "limits",
+          "maxInputChars",
+        ]);
+        const existingMaxRequestsPerMinute = getNestedNumber(
+          effectiveExistingConfig,
+          ["limits", "maxRequestsPerMinute"],
+        );
+        const existingMaxTokensPerDay = getNestedNumber(
+          effectiveExistingConfig,
+          ["limits", "maxTokensPerDay"],
+        );
+        const existingSharedLimitsEnabled = getNestedBoolean(
+          effectiveExistingConfig,
+          ["limits", "shared", "enabled"],
+        );
+        const existingRedisUrl = getNestedString(effectiveExistingConfig, [
+          "limits",
+          "shared",
+          "redisUrl",
+        ]);
+        const existingRedisKeyPrefix = getNestedString(
+          effectiveExistingConfig,
+          ["limits", "shared", "keyPrefix"],
+        );
+
         timeoutMs = await askInt(
           "Request timeout (ms)",
-          defaults.execution.timeoutMs,
+          existingTimeoutMs ?? defaults.execution.timeoutMs,
         );
         maxInputChars = await askInt(
           "Max input chars",
-          defaults.limits.maxInputChars,
+          existingMaxInputChars ?? defaults.limits.maxInputChars,
         );
         maxRequestsPerMinute = await askInt(
           "Max requests per minute",
-          defaults.limits.maxRequestsPerMinute,
+          existingMaxRequestsPerMinute ?? defaults.limits.maxRequestsPerMinute,
         );
         maxTokensPerDay = await askInt(
           "Max tokens per day",
-          defaults.limits.maxTokensPerDay,
+          existingMaxTokensPerDay ?? defaults.limits.maxTokensPerDay,
         );
         sharedLimitsEnabled = await askConfirm(
           "Enable shared limits (Redis)?",
-          false,
+          Boolean(existingSharedLimitsEnabled),
         );
         if (sharedLimitsEnabled) {
           redisUrl = await askText(
             "Redis URL",
-            defaults.limits.shared.redisUrl,
+            existingRedisUrl ?? defaults.limits.shared.redisUrl,
             false,
           );
           redisKeyPrefix = await askText(
             "Redis key prefix",
-            defaults.limits.shared.keyPrefix,
+            existingRedisKeyPrefix ?? defaults.limits.shared.keyPrefix,
             false,
           );
         }
@@ -716,6 +894,10 @@ export async function runSetupWizard(
 
     writeLine();
     writeLine("Next steps");
+    const scriptPath = process.argv[1]
+      ? path.resolve(process.argv[1])
+      : path.resolve("dist/index.js");
+    const nodeInvoke = `node ${JSON.stringify(scriptPath)}`;
     if (answers.authMode !== "cli") {
       writeLine(
         `- Set your API key (env var or file): ${answers.apiKeyEnvVar ?? defaults.auth.apiKeyEnvVar}`,
@@ -723,8 +905,12 @@ export async function runSetupWizard(
     } else {
       writeLine("- Ensure Codex CLI is logged in: codex login status");
     }
-    writeLine("- Validate config: codex-mcp-bridge --doctor");
-    writeLine("- Start server: codex-mcp-bridge --stdio");
+    writeLine("- Validate config:");
+    writeLine("  - If installed globally: codex-mcp-bridge --doctor");
+    writeLine(`  - If running from source: ${nodeInvoke} --doctor`);
+    writeLine("- Start server:");
+    writeLine("  - If installed globally: codex-mcp-bridge --stdio");
+    writeLine(`  - If running from source: ${nodeInvoke} --stdio`);
     writeLine("- For client setup, see docs/USER_MANUAL.md");
     writeLine();
   } finally {

@@ -19,3 +19,7 @@
 
 - Run npm run build and npm run lint; fix lint/build issues (wizard typing, httpServer error type, codexCli exitCode); status updated
 
+## 2026-01-19T18:39:21Z
+
+- Improve setup wizard defaults + safety + next-step commands; fix install docs + add prepare/setup/doctor scripts; verified: npm test, npm run build, npm run lint; next: user re-test setup flow
+

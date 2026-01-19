@@ -11,6 +11,7 @@
 - Improve setup wizard safety + UX (use existing config as defaults, separate default model from advanced options, warn on non-loopback HTTP host, print global vs source run commands).
 - Fix install docs for non-npm distribution; add `npm run setup`/`npm run doctor` and `prepare` build hook.
 - Tools: fix `codex_review` CLI invocation for `uncommitted`; add `cwd` support; auto-retry `codex_exec` with `--skip-git-repo-check` when needed; fix `--ask-for-approval` flag ordering.
+- Tools: in CLI mode, auto-retry `codex_exec` without a default `--model` override when Codex CLI reports the model is unsupported for ChatGPT-account logins.
 
 ## 0.1.0 (2026-01-19)
 

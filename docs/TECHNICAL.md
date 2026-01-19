@@ -54,6 +54,10 @@ Selection:
 
 We model these as optional tool arguments and pass them through to the CLI.
 
+CLI-mode model compatibility:
+- Some Codex CLI logins (notably ChatGPT-account auth) only support a subset of models.
+- If `codex_exec` is invoked without an explicit `model` and Codex CLI reports the chosen model is unsupported for that login, the bridge auto-retries once without a `--model` override so Codex CLI can use its own default.
+
 ---
 
 ## Tool Surface (MVP)

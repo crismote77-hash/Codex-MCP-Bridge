@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-19T19:35:49Z
+Last updated (UTC): 2026-01-19T19:50:45Z
 
 ## Status Discipline (Always)
 
@@ -20,7 +20,7 @@ Last updated (UTC): 2026-01-19T19:35:49Z
 
 ### Next Up
 
-- None
+- User re-test `codex_exec` / `codex_review` from Claude + Gemini (ChatGPT-account Codex CLI).
 
 ## Implementation Strategy (Phases)
 
@@ -45,7 +45,7 @@ Last updated (UTC): 2026-01-19T19:35:49Z
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-19T19:35:49Z
+Last verified (UTC): 2026-01-19T19:49:19Z
 
 - `npm run build` ☑
 - `npm test` ☑

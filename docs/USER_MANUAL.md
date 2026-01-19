@@ -254,5 +254,6 @@ Env overrides:
 - Missing Codex CLI auth: run `codex login` or set `OPENAI_API_KEY` and `CODEX_MCP_AUTH_MODE=api_key`.
 - CLI not found: ensure `codex` is on PATH or set `CODEX_MCP_CLI_COMMAND`.
 - "Not inside a trusted directory": for `codex_exec`, set `cwd` to your project directory or pass `skipGitRepoCheck: true`. For `codex_review`, run inside a git repo (`cwd`).
+- "Model is not supported when using Codex with a ChatGPT account" (CLI mode): set a supported `model`/`cli.defaultModel`. If you omit `model`, `codex_exec` auto-retries once without the bridge's default `--model` override and lets Codex CLI choose its default.
 - "Codex cannot access session files": ensure the process can write to `~/.codex` (ownership/permissions). If you must avoid Codex CLI files entirely, use API-key mode.
 - MCP tools missing: restart the client and verify config path.

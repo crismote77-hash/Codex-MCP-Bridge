@@ -57,6 +57,7 @@ function estimateTokensFromChars(chars: number): number {
 function buildCodexExecArgs(
   args: CodexExecArgs,
   config: SharedDependencies["config"],
+  opts: { disableDefaultModel?: boolean } = {},
 ): string[] {
   const out: string[] = [];
 
@@ -65,7 +66,7 @@ function buildCodexExecArgs(
 
   if (args.useJson) out.push("--json");
   if (args.model) out.push("--model", args.model);
-  else if (config.cli.defaultModel)
+  else if (!opts.disableDefaultModel && config.cli.defaultModel)
     out.push("--model", config.cli.defaultModel);
   if (args.profile) out.push("--profile", args.profile);
   if (args.skipGitRepoCheck) out.push("--skip-git-repo-check");
@@ -156,19 +157,27 @@ export function registerCodexExecTool(
             ? null
             : path.join(os.tmpdir(), `codex-output-${randomUUID()}.txt`);
 
-          const buildArgs = (override?: Partial<CodexExecArgs>): string[] => {
+          const buildArgs = (
+            override?: Partial<CodexExecArgs>,
+            buildOpts?: { disableDefaultModel?: boolean },
+          ): string[] => {
             const merged: CodexExecArgs = { ...args, ...(override ?? {}) };
-            const cliArgs = buildCodexExecArgs(merged, deps.config);
+            const cliArgs = buildCodexExecArgs(
+              merged,
+              deps.config,
+              buildOpts ?? {},
+            );
             if (outputFile) cliArgs.push("--output-last-message", outputFile);
             return cliArgs;
           };
 
           const runOnce = async (
             override?: Partial<CodexExecArgs>,
+            buildOpts?: { disableDefaultModel?: boolean },
           ): Promise<Awaited<ReturnType<typeof runCodexCommand>>> => {
             return runCodexCommand({
               command: deps.config.cli.command,
-              args: buildArgs(override),
+              args: buildArgs(override, buildOpts),
               input: prompt,
               cwd: args.cwd,
               env: process.env,
@@ -177,13 +186,27 @@ export function registerCodexExecTool(
           };
 
           let result = await runOnce();
+          const retryOverride: Partial<CodexExecArgs> = {};
+          const retryBuildOpts: { disableDefaultModel?: boolean } = {};
           if (
             result.exitCode !== 0 &&
             !args.skipGitRepoCheck &&
             result.stderr.includes("Not inside a trusted directory") &&
             result.stderr.includes("skip-git-repo-check")
           ) {
-            result = await runOnce({ skipGitRepoCheck: true });
+            retryOverride.skipGitRepoCheck = true;
+            result = await runOnce(retryOverride);
+          }
+
+          if (
+            result.exitCode !== 0 &&
+            args.model === undefined &&
+            result.stderr
+              .toLowerCase()
+              .includes("not supported when using codex with a chatgpt account")
+          ) {
+            retryBuildOpts.disableDefaultModel = true;
+            result = await runOnce(retryOverride, retryBuildOpts);
           }
 
           if (result.exitCode !== 0) {

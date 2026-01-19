@@ -35,3 +35,7 @@
 
 - Fix Codex CLI tool UX: codex_review uncommitted now omits prompt; add cwd support; codex_exec ask-for-approval ordering + auto-retry skip-git-repo-check; docs+tests; verified: npm test, npm run build, npm run lint
 
+## 2026-01-19T19:49:56Z
+
+- codex_exec: auto-retry without default --model when ChatGPT-account login rejects model; add CLI-mode test; docs+status updated; verified: npm test, npm run build, npm run lint; next: reinstall + re-test in Claude/Gemini
+

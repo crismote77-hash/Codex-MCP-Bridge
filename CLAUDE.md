@@ -169,3 +169,11 @@ When changing public surface area (tool params/results, resources, config keys):
 
 - MCP spec (2025-11-25): https://modelcontextprotocol.io/specification/2025-11-25
 - MCP TS SDK: https://github.com/modelcontextprotocol/typescript-sdk
+
+## Task Tracking & Memory (avoid dropped steps)
+- Active tracker: `STATUS.md` (or `PROJECT_STATUS.md` if present).
+- Break work into subtasks with `pending|in_progress|blocked|completed|canceled` (only 1 `in_progress` at a time) and a `DoD` (evidence).
+- Replan is allowed: any list change must include `Reason:` (new fact/blocker/constraint).
+- Archive: when closing a complex task, move the summary to `runbook.md` (append-only).
+- Rotation: if `runbook.md` > 1MB, rename it to `runbook_YYYYMMDD_HHMMSS.md` and start a fresh runbook (keep an index/history at the top of the active runbook).
+- Before execution, do a quick `Planner/Critic/Verifier` pass to freeze the checklist and `DoD` per subtask.

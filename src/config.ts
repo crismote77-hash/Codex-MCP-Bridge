@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { expandHome } from "./utils/paths.js";
 import { isRecord } from "./utils/typeGuards.js";
@@ -26,6 +27,13 @@ const configSchema = z
         color: z.enum(["auto", "always", "never"]).default("never"),
       })
       .default({}),
+    trust: z
+      .object({
+        promptOnStart: z.boolean().default(true),
+        promptDir: z.string().optional(),
+        trustedDirs: z.array(z.string()).default([]),
+      })
+      .default({}),
     api: z
       .object({
         baseUrl: z.string().default("https://api.openai.com/v1"),
@@ -40,6 +48,9 @@ const configSchema = z
         maxRequestsPerMinute: z.number().int().positive().default(30),
         maxTokensPerDay: z.number().int().positive().default(200000),
         enableCostEstimates: z.boolean().default(false),
+        maxImages: z.number().int().positive().default(5),
+        maxImageBytes: z.number().int().positive().default(20000000), // 20MB
+        maxAudioBytes: z.number().int().positive().default(25000000), // 25MB (OpenAI limit)
         shared: z
           .object({
             enabled: z.boolean().default(false),
@@ -48,6 +59,29 @@ const configSchema = z
             connectTimeoutMs: z.number().int().positive().default(10000),
           })
           .default({}),
+      })
+      .default({}),
+    filesystem: z
+      .object({
+        roots: z.array(z.string()).default([]),
+        maxFiles: z.number().int().positive().default(25),
+        maxFileBytes: z.number().int().positive().default(200000),
+        maxTotalBytes: z.number().int().positive().default(2000000),
+        maxSearchResults: z.number().int().positive().default(200),
+        allowWrite: z.boolean().default(false),
+      })
+      .default({}),
+    web: z
+      .object({
+        searchEnabled: z.boolean().default(false),
+        fetchEnabled: z.boolean().default(false),
+        provider: z.enum(["tavily"]).default("tavily"),
+        tavilyApiKey: z.string().optional(),
+        maxResults: z.number().int().positive().default(5),
+        maxFetchBytes: z.number().int().positive().default(200000),
+        timeoutMs: z.number().int().positive().default(10000),
+        userAgent: z.string().default("codex-mcp-bridge"),
+        allowLocalhost: z.boolean().default(false),
       })
       .default({}),
     logging: z
@@ -175,6 +209,24 @@ export function loadConfig(
       command: env.CODEX_MCP_CLI_COMMAND,
     };
 
+  if (env.CODEX_MCP_TRUST_PROMPT)
+    merged.trust = {
+      ...(merged.trust as object),
+      promptOnStart: parseBooleanEnv(env.CODEX_MCP_TRUST_PROMPT),
+    };
+  if (env.CODEX_MCP_TRUST_PROMPT_DIR)
+    merged.trust = {
+      ...(merged.trust as object),
+      promptDir: env.CODEX_MCP_TRUST_PROMPT_DIR,
+    };
+  if (env.CODEX_MCP_TRUSTED_DIRS)
+    merged.trust = {
+      ...(merged.trust as object),
+      trustedDirs: env.CODEX_MCP_TRUSTED_DIRS.split(path.delimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    };
+
   if (env.CODEX_MCP_MODEL)
     merged.api = { ...(merged.api as object), model: env.CODEX_MCP_MODEL };
   if (env.CODEX_MCP_API_BASE_URL)
@@ -225,6 +277,27 @@ export function loadConfig(
       ...(merged.limits as object),
       enableCostEstimates: parseBooleanEnv(env.CODEX_MCP_ENABLE_COST_ESTIMATES),
     };
+  if (env.CODEX_MCP_MAX_IMAGES)
+    merged.limits = {
+      ...(merged.limits as object),
+      maxImages: parseIntEnv(env.CODEX_MCP_MAX_IMAGES, "CODEX_MCP_MAX_IMAGES"),
+    };
+  if (env.CODEX_MCP_MAX_IMAGE_BYTES)
+    merged.limits = {
+      ...(merged.limits as object),
+      maxImageBytes: parseIntEnv(
+        env.CODEX_MCP_MAX_IMAGE_BYTES,
+        "CODEX_MCP_MAX_IMAGE_BYTES",
+      ),
+    };
+  if (env.CODEX_MCP_MAX_AUDIO_BYTES)
+    merged.limits = {
+      ...(merged.limits as object),
+      maxAudioBytes: parseIntEnv(
+        env.CODEX_MCP_MAX_AUDIO_BYTES,
+        "CODEX_MCP_MAX_AUDIO_BYTES",
+      ),
+    };
 
   if (env.CODEX_MCP_SHARED_LIMITS_ENABLED)
     merged.limits = {
@@ -249,6 +322,106 @@ export function loadConfig(
         ...((merged.limits as { shared?: object }).shared ?? {}),
         keyPrefix: env.CODEX_MCP_REDIS_KEY_PREFIX,
       },
+    };
+
+  if (env.CODEX_MCP_FILESYSTEM_ROOTS)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      roots: env.CODEX_MCP_FILESYSTEM_ROOTS.split(path.delimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    };
+  if (env.CODEX_MCP_FILESYSTEM_MAX_FILES)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      maxFiles: parseIntEnv(
+        env.CODEX_MCP_FILESYSTEM_MAX_FILES,
+        "CODEX_MCP_FILESYSTEM_MAX_FILES",
+      ),
+    };
+  if (env.CODEX_MCP_FILESYSTEM_MAX_FILE_BYTES)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      maxFileBytes: parseIntEnv(
+        env.CODEX_MCP_FILESYSTEM_MAX_FILE_BYTES,
+        "CODEX_MCP_FILESYSTEM_MAX_FILE_BYTES",
+      ),
+    };
+  if (env.CODEX_MCP_FILESYSTEM_MAX_TOTAL_BYTES)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      maxTotalBytes: parseIntEnv(
+        env.CODEX_MCP_FILESYSTEM_MAX_TOTAL_BYTES,
+        "CODEX_MCP_FILESYSTEM_MAX_TOTAL_BYTES",
+      ),
+    };
+  if (env.CODEX_MCP_FILESYSTEM_MAX_SEARCH_RESULTS)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      maxSearchResults: parseIntEnv(
+        env.CODEX_MCP_FILESYSTEM_MAX_SEARCH_RESULTS,
+        "CODEX_MCP_FILESYSTEM_MAX_SEARCH_RESULTS",
+      ),
+    };
+  if (env.CODEX_MCP_FILESYSTEM_ALLOW_WRITE)
+    merged.filesystem = {
+      ...(merged.filesystem as object),
+      allowWrite: parseBooleanEnv(env.CODEX_MCP_FILESYSTEM_ALLOW_WRITE),
+    };
+
+  if (env.CODEX_MCP_WEB_SEARCH_ENABLED)
+    merged.web = {
+      ...(merged.web as object),
+      searchEnabled: parseBooleanEnv(env.CODEX_MCP_WEB_SEARCH_ENABLED),
+    };
+  if (env.CODEX_MCP_WEB_FETCH_ENABLED)
+    merged.web = {
+      ...(merged.web as object),
+      fetchEnabled: parseBooleanEnv(env.CODEX_MCP_WEB_FETCH_ENABLED),
+    };
+  if (env.CODEX_MCP_WEB_PROVIDER)
+    merged.web = {
+      ...(merged.web as object),
+      provider: env.CODEX_MCP_WEB_PROVIDER,
+    };
+  if (env.CODEX_MCP_TAVILY_API_KEY)
+    merged.web = {
+      ...(merged.web as object),
+      tavilyApiKey: env.CODEX_MCP_TAVILY_API_KEY,
+    };
+  if (env.CODEX_MCP_WEB_MAX_RESULTS)
+    merged.web = {
+      ...(merged.web as object),
+      maxResults: parseIntEnv(
+        env.CODEX_MCP_WEB_MAX_RESULTS,
+        "CODEX_MCP_WEB_MAX_RESULTS",
+      ),
+    };
+  if (env.CODEX_MCP_WEB_MAX_FETCH_BYTES)
+    merged.web = {
+      ...(merged.web as object),
+      maxFetchBytes: parseIntEnv(
+        env.CODEX_MCP_WEB_MAX_FETCH_BYTES,
+        "CODEX_MCP_WEB_MAX_FETCH_BYTES",
+      ),
+    };
+  if (env.CODEX_MCP_WEB_TIMEOUT_MS)
+    merged.web = {
+      ...(merged.web as object),
+      timeoutMs: parseIntEnv(
+        env.CODEX_MCP_WEB_TIMEOUT_MS,
+        "CODEX_MCP_WEB_TIMEOUT_MS",
+      ),
+    };
+  if (env.CODEX_MCP_WEB_USER_AGENT)
+    merged.web = {
+      ...(merged.web as object),
+      userAgent: env.CODEX_MCP_WEB_USER_AGENT,
+    };
+  if (env.CODEX_MCP_WEB_ALLOW_LOCALHOST)
+    merged.web = {
+      ...(merged.web as object),
+      allowLocalhost: parseBooleanEnv(env.CODEX_MCP_WEB_ALLOW_LOCALHOST),
     };
 
   if (env.CODEX_MCP_TRANSPORT_MODE)

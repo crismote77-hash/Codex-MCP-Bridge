@@ -130,4 +130,29 @@ describe("codex_exec (CLI mode)", () => {
     expect(args3).toContain("--skip-git-repo-check");
     expect(args3).not.toContain("--model");
   });
+
+  it("treats exit code 1 as non-fatal when output exists", async () => {
+    const dir = await makeTempDir();
+    const cliAuthPath = path.join(dir, "auth.json");
+    await fs.writeFile(cliAuthPath, "{}", "utf8");
+
+    const { deps } = createDeps(cliAuthPath);
+    const server = new FakeServer();
+    registerCodexExecTool(server as unknown as McpServer, deps);
+    const handler = server.tools["codex_exec"];
+
+    vi.mocked(runCodexCommand).mockResolvedValueOnce({
+      stdout: "ok",
+      stderr: "",
+      exitCode: 1,
+    });
+
+    const result = (await handler({
+      prompt: "hello",
+      useJson: true,
+    })) as { isError?: boolean; content?: Array<{ text?: string }> };
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content?.[0]?.text).toBe("ok");
+  });
 });

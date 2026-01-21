@@ -1,5 +1,9 @@
 # Runbook (Rotating)
 
+## Runbook Index
+- (none yet)
+
+
 ## 2026-01-19T13:22:27Z
 
 - Initialized codexMCPbridge scaffold and baseline docs.
@@ -46,4 +50,47 @@
 ## 2026-01-19T21:07:37Z
 
 - codex_review fixes: ignore prompt with uncommitted/base/commit; use stderr fallback output; treat exit code 1 as non-fatal unless fatal/usage; diff reviews require API key; add tests+docs; verified: npm test, npm run build, npm run lint; next: user re-test in Claude/Gemini
+## 2026-01-21T17:31:50Z
+
+- Add startup trusted-dir prompt + persisted trust list; auto-apply skip-git-repo-check for trusted cwd in codex_exec/codex_review; add trust util + tests; update docs/changelog; verified: npm test -- tests/trustDirs.test.ts tests/codexReviewArgs.test.ts; next: user retest in Claude/Gemini
+
+## 2026-01-21T17:55:40Z
+
+- codex_exec: treat exit code 1 as non-fatal when output exists (fatal/usage still fail); add test; docs/changelog updated; verified: npm test -- tests/codexExecCliFallback.test.ts; next: user re-test in Claude/Gemini
+
+## 2026-01-21T20:31:26Z
+
+- Documented cross-bridge capability research matrix in docs/TECHNICAL.md; verification: docs only; next: user review
+
+## 2026-01-21T20:36:53Z
+
+- Added per-bridge implementation plans for Yes* capabilities in docs/TECHNICAL.md; verification: docs only; next: user review
+
+## 2026-01-21T20:38:37Z
+
+- Planned Codex MCP Yes* implementation tasks (streaming, vision, audio, image gen, web search, token count, patch, file tools) in STATUS.md; verification: planning only; next: pick first task
+
+## 2026-01-21T20:39:13Z
+
+- Trimmed STATUS.md task list to Codex MCP-only items per request; verification: planning only; next: pick first task
+
+## 2026-01-21T21:07:02Z
+
+- Add filesystem tools (codex_read_file/codex_search_files), config + limits, tests, docs; verification: npm test, npm run build, npm run lint; next: start T09 codex_code_fix
+
+## 2026-01-21T21:22:25Z
+
+- Add codex_code_fix tool with safe file collection, unified diff validation, optional git apply gated by filesystem.allowWrite; add config/env docs and tests; verification: npm test, npm run build, npm run lint; next: start T08 token counting
+
+## 2026-01-21T21:40:04Z
+
+- Add codex_count_tokens and codex_count_tokens_batch using @dqbd/tiktoken with model-aware encodings; update docs/tests; verification: npm test, npm run build, npm run lint; next: start T07 web search/fetch
+
+## 2026-01-21T21:46:58Z
+
+- Add codex_web_search (Tavily) and codex_web_fetch with URL validation, size limits, and config toggles; add tests/docs; verification: npm test, npm run build, npm run lint; next: consider T06 image generation
+
+## 2026-01-21T22:35:23Z
+
+- Completed T03-T06: streaming responses (JSONL/SSE parsing), vision/image input (multimodal API), audio transcription (Whisper API), image generation (DALL-E API); 105 tests pass; all docs updated
 

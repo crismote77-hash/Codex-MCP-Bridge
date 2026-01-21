@@ -37,6 +37,14 @@ describe("buildCodexReviewArgs", () => {
     expect(input).toBe("Review the diff");
   });
 
+  it("includes skip-git-repo-check when requested", () => {
+    const { args, input } = buildCodexReviewArgs({
+      skipGitRepoCheck: true,
+    });
+    expect(args).toEqual(["review", "--skip-git-repo-check"]);
+    expect(input).toBe("");
+  });
+
   it("does not pass stdin when no prompt", () => {
     const { args, input } = buildCodexReviewArgs({});
     expect(args).toEqual(["review"]);

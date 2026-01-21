@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config.js";
-import { createStderrLogger } from "./logger.js";
+import { DEFAULT_CONFIG_PATH, loadConfig } from "./config.js";
+import { createStderrLogger, type Logger } from "./logger.js";
 import { RateLimiter } from "./limits/rateLimiter.js";
 import { DailyTokenBudget } from "./limits/dailyTokenBudget.js";
 import { createSharedLimitStore } from "./limits/sharedStore.js";
@@ -15,6 +16,8 @@ import { startHttpServer } from "./httpServer.js";
 import { runSetupWizard, type SetupWizardOptions } from "./setupWizard.js";
 import { redactMeta, redactString } from "./utils/redact.js";
 import { expandHome } from "./utils/paths.js";
+import { isRecord } from "./utils/typeGuards.js";
+import { addTrustedDir, isTrustedCwd } from "./utils/trustDirs.js";
 import { runOpenAI } from "./services/openaiClient.js";
 
 type CliCommand =
@@ -334,6 +337,120 @@ function printHelp(info: { name: string; version: string }): void {
   process.stdout.write(`\n`);
 }
 
+const YES_VALUES = new Set(["y", "yes"]);
+
+function resolveConfigPathForWrite(configPath?: string): string {
+  return expandHome(configPath ?? DEFAULT_CONFIG_PATH);
+}
+
+function openTty(): { input: fs.ReadStream; output: fs.WriteStream } | null {
+  const ttyPath = process.platform === "win32" ? "\\\\.\\CON" : "/dev/tty";
+  let input: fs.ReadStream | null = null;
+  let output: fs.WriteStream | null = null;
+  try {
+    input = fs.createReadStream(ttyPath, { encoding: "utf8" });
+    output = fs.createWriteStream(ttyPath, { encoding: "utf8" });
+    return { input, output };
+  } catch {
+    input?.destroy();
+    output?.end();
+    return null;
+  }
+}
+
+async function promptYesNo(message: string): Promise<boolean | null> {
+  const tty = openTty();
+  if (!tty) return null;
+  const rl = createInterface({ input: tty.input, output: tty.output });
+  try {
+    const answer = (await rl.question(message)).trim().toLowerCase();
+    return YES_VALUES.has(answer);
+  } finally {
+    rl.close();
+    tty.input.destroy();
+    tty.output.end();
+  }
+}
+
+function writeTrustedDirs(
+  logger: Logger,
+  configPath: string,
+  trustedDirs: string[],
+): void {
+  const resolvedPath = expandHome(configPath);
+  let rawConfig: unknown = {};
+  if (fs.existsSync(resolvedPath)) {
+    try {
+      rawConfig = JSON.parse(fs.readFileSync(resolvedPath, "utf8")) as unknown;
+    } catch (error) {
+      logger.error("Failed to parse config file for trusted dirs update", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+  }
+
+  const configObj: Record<string, unknown> = isRecord(rawConfig)
+    ? { ...rawConfig }
+    : {};
+  const trustObj: Record<string, unknown> = isRecord(configObj.trust)
+    ? { ...(configObj.trust as Record<string, unknown>) }
+    : {};
+
+  trustObj.trustedDirs = trustedDirs;
+  configObj.trust = trustObj;
+
+  try {
+    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    fs.writeFileSync(
+      resolvedPath,
+      `${JSON.stringify(configObj, null, 2)}\n`,
+      "utf8",
+    );
+  } catch (error) {
+    logger.error("Failed to write trusted dirs to config file", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function maybePromptTrustedDir(
+  logger: Logger,
+  configPath: string | undefined,
+  promptDir: string | undefined,
+  trustedDirs: string[],
+): Promise<string[] | null> {
+  const dir = promptDir?.trim() || process.cwd();
+  if (!dir) return null;
+  const resolvedDir = path.resolve(expandHome(dir));
+  if (isTrustedCwd(resolvedDir, trustedDirs)) return null;
+
+  if (!fs.existsSync(resolvedDir)) {
+    logger.warn("Trust prompt skipped (path missing)", { dir: resolvedDir });
+    return null;
+  }
+
+  const answer = await promptYesNo(
+    `Trust directory for Codex CLI git repo checks? ${resolvedDir} (auto --skip-git-repo-check) [y/N] `,
+  );
+  if (answer === null) {
+    logger.info("Trust prompt skipped (no TTY available)", {
+      dir: resolvedDir,
+    });
+    return null;
+  }
+  if (!answer) {
+    logger.info("Trust prompt declined", { dir: resolvedDir });
+    return null;
+  }
+
+  const updated = addTrustedDir(trustedDirs, resolvedDir);
+  if (configPath) {
+    writeTrustedDirs(logger, configPath, updated);
+  }
+  return updated;
+}
+
 async function runDoctor(
   configPath?: string,
   checkApi = false,
@@ -521,6 +638,19 @@ async function main(): Promise<void> {
   const httpHost = cmd.httpHost ?? config.transport.http.host;
   const httpPort = cmd.httpPort ?? config.transport.http.port;
   const logger = createStderrLogger({ debugEnabled: config.logging.debug });
+
+  if (config.trust.promptOnStart) {
+    const configPathForWrite = resolveConfigPathForWrite(cmd.configPath);
+    const updatedTrustedDirs = await maybePromptTrustedDir(
+      logger,
+      configPathForWrite,
+      config.trust.promptDir,
+      config.trust.trustedDirs,
+    );
+    if (updatedTrustedDirs) {
+      config.trust.trustedDirs = updatedTrustedDirs;
+    }
+  }
 
   const sharedLimitStore = await createSharedLimitStore({
     enabled: config.limits.shared.enabled,

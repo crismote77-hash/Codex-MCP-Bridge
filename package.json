@@ -35,6 +35,7 @@
   "author": "Cristobal Mora <crismote77@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "@dqbd/tiktoken": "^1.0.22",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "dotenv": "^16.4.0",
     "redis": "^5.10.0",

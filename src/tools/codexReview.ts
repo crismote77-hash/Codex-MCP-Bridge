@@ -7,10 +7,12 @@ import { runCodexCommand, CodexCliError } from "../services/codexCli.js";
 import { runOpenAI } from "../services/openaiClient.js";
 import { formatToolError } from "../utils/toolErrors.js";
 import { redactString } from "../utils/redact.js";
+import { isTrustedCwd } from "../utils/trustDirs.js";
 
 const inputSchema = {
   prompt: z.string().optional(),
   cwd: z.string().optional(),
+  skipGitRepoCheck: z.boolean().default(false),
   base: z.string().optional(),
   commit: z.string().optional(),
   uncommitted: z.boolean().default(false),
@@ -26,6 +28,7 @@ const inputSchema = {
 type CodexReviewArgs = {
   prompt?: string;
   cwd?: string;
+  skipGitRepoCheck?: boolean;
   base?: string;
   commit?: string;
   uncommitted?: boolean;
@@ -47,6 +50,7 @@ export function buildCodexReviewArgs(args: CodexReviewArgs): {
   input: string;
 } {
   const out: string[] = ["review"];
+  if (args.skipGitRepoCheck) out.push("--skip-git-repo-check");
   if (args.uncommitted) out.push("--uncommitted");
   if (args.base) out.push("--base", args.base);
   if (args.commit) out.push("--commit", args.commit);
@@ -72,7 +76,7 @@ export function registerCodexReviewTool(
     {
       title: "Codex Review",
       description:
-        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd). Note: Codex CLI does not accept prompt with uncommitted/base/commit; prompt is ignored when those flags are used. Diff-only reviews require API-key mode.",
+        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd); use skipGitRepoCheck for trusted paths if needed. Note: Codex CLI does not accept prompt with uncommitted/base/commit; prompt is ignored when those flags are used. Diff-only reviews require API-key mode.",
       inputSchema,
     },
     async (args: CodexReviewArgs) => {
@@ -138,7 +142,13 @@ export function registerCodexReviewTool(
         let outputTokens = 0;
 
         if (auth.type === "cli") {
-          const { args: cliArgs, input } = buildCodexReviewArgs(args);
+          const effectiveArgs = {
+            ...args,
+            skipGitRepoCheck:
+              args.skipGitRepoCheck ||
+              isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+          };
+          const { args: cliArgs, input } = buildCodexReviewArgs(effectiveArgs);
           const inputPrompt = input || "";
           if (inputPrompt.length > deps.config.limits.maxInputChars) {
             return {

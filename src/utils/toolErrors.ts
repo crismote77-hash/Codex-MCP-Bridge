@@ -1,5 +1,10 @@
 import { AuthError } from "../auth/resolveAuth.js";
-import { ConfigError } from "../errors.js";
+import {
+  ConfigError,
+  FilesystemError,
+  PatchError,
+  WebError,
+} from "../errors.js";
 import { BudgetError } from "../limits/dailyTokenBudget.js";
 import { RateLimitError as LocalRateLimitError } from "../limits/rateLimiter.js";
 import { CodexCliError } from "../services/codexCli.js";
@@ -11,6 +16,18 @@ export type ToolErrorInfo = { message: string };
 export function formatToolError(error: unknown): ToolErrorInfo {
   if (error instanceof ConfigError) {
     return { message: error.message || "Configuration error." };
+  }
+
+  if (error instanceof FilesystemError) {
+    return { message: error.message || "Filesystem access error." };
+  }
+
+  if (error instanceof PatchError) {
+    return { message: error.message || "Patch validation error." };
+  }
+
+  if (error instanceof WebError) {
+    return { message: error.message || "Web request error." };
   }
 
   if (error instanceof AuthError) {

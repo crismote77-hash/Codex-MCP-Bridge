@@ -251,7 +251,7 @@ Additional options:
   - With images: "Use codex_exec with prompt '...' and images=['/path/to/image.png']" (file paths, URLs, or data URLs)
 - Code review:
   - Repo-based review (CLI mode): "Use codex_review with uncommitted=true and cwd=/path/to/repo"
-  - Diff review (API-key mode): "Use codex_review with a diff payload and prompt 'Review this diff for bugs and regressions'"
+  - Diff review: "Use codex_review with a diff payload and prompt 'Review this diff for bugs and regressions'" (uses API key if available, falls back to CLI otherwise)
 - File read:
   - "Use codex_read_file with path=/path/to/file and startLine=1 endLine=200"
 - File search:
@@ -273,9 +273,11 @@ Additional options:
 
 ## Tool Notes
 
-- `codex_review` has two modes:
-  - CLI mode: uses local git state (requires `cwd` inside a git repo).
-  - API-key mode: requires a `diff` payload.
+- `codex_review` has two review approaches:
+  - **Repo-based reviews** (CLI mode): uses local git state with flags like `uncommitted`, `base`, `commit`. Requires `cwd` inside a git repo. Works with `codex login` (no API key needed).
+  - **Diff-based reviews** (passing a `diff` string): Can work two ways:
+    - With API key (preferred): Direct API call for faster response.
+    - Without API key (fallback): Routes through `codex exec`, using your CLI auth (including ChatGPT login via `codex login`).
 - Model selection:
   - The config sets defaults (`cli.defaultModel` for Codex CLI exec, `api.model` for API fallback).
   - You can override per request by passing `model` to `codex_exec` (and to `codex_review` in API mode).
@@ -374,6 +376,23 @@ Web settings:
 - `web.userAgent`: user agent for web requests.
 - `web.allowLocalhost`: allow localhost/private fetches (default false).
 
+Logging settings:
+- `logging.errorLogging`: level of error logging (`off`, `errors`, `debug`, `full`). Default `errors`.
+- `logging.directory`: override the default log directory.
+- `logging.maxFileSizeMb`: max size before rotation (default 50).
+- `logging.retentionDays`: days to keep old logs (default 7).
+
+Error logs are written to platform-specific directories:
+- **Linux/WSL**: `$XDG_STATE_HOME/codex-mcp-bridge/logs/` or `~/.local/state/codex-mcp-bridge/logs/`
+- **macOS**: `~/Library/Logs/codex-mcp-bridge/`
+- **Windows**: `%LOCALAPPDATA%\codex-mcp-bridge\logs\`
+
+Log levels:
+- `off`: disable logging
+- `errors`: log tool errors with sanitized metadata (default)
+- `debug`: include truncated previews and stack traces
+- `full`: include full context (for debugging only; may contain sensitive data)
+
 Env overrides:
 - `CODEX_MCP_AUTH_MODE` = auto | cli | api_key
 - `CODEX_MCP_API_KEY` (inline key)
@@ -415,6 +434,10 @@ Env overrides:
 - `CODEX_MCP_WEB_TIMEOUT_MS`
 - `CODEX_MCP_WEB_USER_AGENT`
 - `CODEX_MCP_WEB_ALLOW_LOCALHOST`
+- `CODEX_MCP_LOG_LEVEL` (off | errors | debug | full)
+- `CODEX_MCP_LOG_DIR`
+- `CODEX_MCP_LOG_MAX_SIZE_MB`
+- `CODEX_MCP_LOG_RETENTION_DAYS`
 - `CODEX_MCP_TRANSPORT_MODE`
 - `CODEX_MCP_HTTP_HOST`
 - `CODEX_MCP_HTTP_PORT`
@@ -426,8 +449,9 @@ Env overrides:
 - Missing Codex CLI auth: run `codex login` or set `OPENAI_API_KEY` and `CODEX_MCP_AUTH_MODE=api_key`.
 - CLI not found: ensure `codex` is on PATH or set `CODEX_MCP_CLI_COMMAND`.
 - "Not inside a trusted directory": accept the startup trust prompt (TTY) or add the path to `trust.trustedDirs` / `CODEX_MCP_TRUSTED_DIRS` so the bridge auto-adds `--skip-git-repo-check`. You can also pass `skipGitRepoCheck: true` directly; `codex_review` still expects a git repo for repo-based diffs.
-- "Diff reviews require API-key auth": set `CODEX_MCP_AUTH_MODE=api_key` and provide an API key, or use repo-based review in CLI mode (`uncommitted`/`base`/`commit` + `cwd`).
+- Diff review performance: With an API key (`OPENAI_API_KEY`), diff reviews call the API directly. Without one, the bridge falls back to `codex exec` which may be slower but works with `codex login` auth.
 - "codex_review ignores prompt": Codex CLI does not accept `prompt` with `uncommitted`/`base`/`commit`, so the bridge ignores it.
 - "Model is not supported when using Codex with a ChatGPT account" (CLI mode): set a supported `model`/`cli.defaultModel`. If you omit `model`, `codex_exec` auto-retries once without the bridge's default `--model` override and lets Codex CLI choose its default.
 - "Codex cannot access session files": ensure the process can write to `~/.codex` (ownership/permissions). If you must avoid Codex CLI files entirely, use API-key mode.
 - MCP tools missing: restart the client and verify config path.
+- Error logs: check platform-specific log directory (see Logging settings). Each error is logged with context including tool name, sanitized args, OS info, and stack trace. In WSL, logs default to Linux paths; set `CODEX_MCP_LOG_DIR=/mnt/c/Users/<user>/AppData/Local/codex-mcp-bridge/logs` for Windows access.

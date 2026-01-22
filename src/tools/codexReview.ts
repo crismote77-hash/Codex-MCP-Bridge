@@ -23,6 +23,7 @@ const inputSchema = {
   model: z.string().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
+  useJson: z.boolean().default(false),
 };
 
 type CodexReviewArgs = {
@@ -39,6 +40,7 @@ type CodexReviewArgs = {
   model?: string;
   maxOutputTokens?: number;
   temperature?: number;
+  useJson?: boolean;
 };
 
 function estimateTokensFromChars(chars: number): number {
@@ -67,6 +69,30 @@ export function buildCodexReviewArgs(args: CodexReviewArgs): {
   return { args: out, input };
 }
 
+/**
+ * Build CLI args for running a diff review via `codex exec`.
+ * Used as fallback when API key is not available for diff reviews.
+ */
+function buildCodexExecArgsForDiffReview(
+  args: CodexReviewArgs,
+  config: SharedDependencies["config"],
+): string[] {
+  const out: string[] = ["exec", "-"];
+
+  if (args.useJson) out.push("--json");
+  if (args.model) out.push("--model", args.model);
+  else if (config.cli.defaultModel)
+    out.push("--model", config.cli.defaultModel);
+  if (args.skipGitRepoCheck) out.push("--skip-git-repo-check");
+  if (config.cli.color) out.push("--color", config.cli.color);
+  if (args.cwd) out.push("--cd", args.cwd);
+  if (args.configOverrides) {
+    for (const entry of args.configOverrides) out.push("-c", entry);
+  }
+
+  return out;
+}
+
 export function registerCodexReviewTool(
   server: McpServer,
   deps: SharedDependencies,
@@ -76,7 +102,7 @@ export function registerCodexReviewTool(
     {
       title: "Codex Review",
       description:
-        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd); use skipGitRepoCheck for trusted paths if needed. Note: Codex CLI does not accept prompt with uncommitted/base/commit; prompt is ignored when those flags are used. Diff-only reviews require API-key mode.",
+        "Run Codex review (CLI-first, API fallback). CLI mode must run inside a git repo (use cwd); use skipGitRepoCheck for trusted paths if needed. Note: Codex CLI does not accept prompt with uncommitted/base/commit; prompt is ignored when those flags are used. Diff reviews work best with an API key (OPENAI_API_KEY) for direct API calls; without one, diff reviews fall back to codex exec which may be slower.",
       inputSchema,
     },
     async (args: CodexReviewArgs) => {
@@ -89,20 +115,12 @@ export function registerCodexReviewTool(
         const diff = args.diff?.trim();
         const wantsDiffReview = Boolean(diff);
 
-        if (wantsDiffReview && deps.config.auth.mode === "cli") {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: "Diff reviews require API-key auth. Set CODEX_MCP_AUTH_MODE=api_key and provide an API key (OPENAI_API_KEY / OPENAI_API_KEY_FILE), or omit diff and run a repo-based review (uncommitted/base/commit) in CLI mode.",
-              },
-            ],
-          };
-        }
-
+        // For diff reviews, try API key first; if unavailable, fall back to CLI exec
         let auth: ReturnType<typeof resolveAuth>;
+        let useDiffViaExecFallback = false;
+
         if (wantsDiffReview) {
+          // Try to get API key auth for diff reviews (preferred path)
           try {
             auth = resolveAuth({
               mode: "api_key",
@@ -113,17 +131,23 @@ export function registerCodexReviewTool(
               apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
               env: process.env,
             });
-          } catch (resolveError) {
-            const formatted = formatToolError(resolveError);
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text",
-                  text: `Diff reviews require API-key auth.\n${formatted.message}`,
-                },
-              ],
-            };
+          } catch {
+            // No API key available - fall back to CLI exec for diff review
+            auth = resolveAuth({
+              mode: deps.config.auth.mode,
+              cliAuthPath: deps.config.auth.cliAuthPath,
+              apiKey: deps.config.auth.apiKey,
+              apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
+              apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
+              apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
+              env: process.env,
+            });
+            if (auth.type === "cli") {
+              useDiffViaExecFallback = true;
+              deps.logger.info(
+                "No API key available for diff review; falling back to codex exec",
+              );
+            }
           }
         } else {
           auth = resolveAuth({
@@ -142,70 +166,152 @@ export function registerCodexReviewTool(
         let outputTokens = 0;
 
         if (auth.type === "cli") {
-          const effectiveArgs = {
-            ...args,
-            skipGitRepoCheck:
-              args.skipGitRepoCheck ||
-              isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
-          };
-          const { args: cliArgs, input } = buildCodexReviewArgs(effectiveArgs);
-          const inputPrompt = input || "";
-          if (inputPrompt.length > deps.config.limits.maxInputChars) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text",
-                  text: `Prompt exceeds max input size (${deps.config.limits.maxInputChars} chars).`,
-                },
-              ],
-            };
-          }
+          if (useDiffViaExecFallback && diff) {
+            // Fallback: route diff review through codex exec
+            const reviewPrompt = [
+              args.prompt?.trim() ||
+                "Review the following diff for bugs, regressions, and risks.",
+              "",
+              "```diff",
+              diff,
+              "```",
+            ].join("\n");
 
-          reservation = await deps.dailyBudget.reserve(
-            estimateTokensFromChars(inputPrompt.length || 1),
-          );
+            if (reviewPrompt.length > deps.config.limits.maxInputChars) {
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text: `Diff exceeds max input size (${deps.config.limits.maxInputChars} chars).`,
+                  },
+                ],
+              };
+            }
 
-          const result = await runCodexCommand({
-            command: deps.config.cli.command,
-            args: cliArgs,
-            input: inputPrompt || "",
-            cwd: args.cwd,
-            env: process.env,
-            timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
-          });
-
-          const stdout = result.stdout.trim();
-          const stderr = result.stderr.trim();
-          const combined = [stdout, stderr].filter(Boolean).join("\n");
-          const output = stdout || stderr;
-
-          const fatal =
-            combined.toLowerCase().includes("fatal error") ||
-            (combined.toLowerCase().includes("error:") &&
-              combined.toLowerCase().includes("usage:")) ||
-            combined.includes("Not inside a trusted directory");
-
-          if (result.exitCode !== 0 && !(result.exitCode === 1 && !fatal)) {
-            const err = new CodexCliError(
-              `Codex CLI exited with ${result.exitCode}`,
+            reservation = await deps.dailyBudget.reserve(
+              estimateTokensFromChars(reviewPrompt.length),
             );
-            err.exitCode = result.exitCode ?? undefined;
-            err.stderr = result.stderr;
-            throw err;
+
+            const effectiveArgs = {
+              ...args,
+              skipGitRepoCheck:
+                args.skipGitRepoCheck ||
+                isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+            };
+            const execArgs = buildCodexExecArgsForDiffReview(
+              effectiveArgs,
+              deps.config,
+            );
+
+            const result = await runCodexCommand({
+              command: deps.config.cli.command,
+              args: execArgs,
+              input: reviewPrompt,
+              cwd: args.cwd,
+              env: process.env,
+              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+            });
+
+            const stdout = result.stdout.trim();
+            const stderr = result.stderr.trim();
+            const combined = [stdout, stderr].filter(Boolean).join("\n");
+            const output = stdout || stderr;
+
+            const fatal =
+              combined.toLowerCase().includes("fatal error") ||
+              (combined.toLowerCase().includes("error:") &&
+                combined.toLowerCase().includes("usage:")) ||
+              combined.includes("Not inside a trusted directory");
+
+            if (result.exitCode !== 0 && !(result.exitCode === 1 && !fatal)) {
+              const err = new CodexCliError(
+                `Codex CLI exited with ${result.exitCode}`,
+              );
+              err.exitCode = result.exitCode ?? undefined;
+              err.stderr = result.stderr;
+              throw err;
+            }
+
+            text = output;
+            inputTokens = estimateTokensFromChars(reviewPrompt.length);
+            outputTokens = estimateTokensFromChars(text.length || 1);
+
+            await deps.dailyBudget.commit(
+              "codex_review",
+              inputTokens + outputTokens,
+              undefined,
+              reservation,
+            );
+            committed = true;
+          } else {
+            // Standard CLI review path (repo-based)
+            const effectiveArgs = {
+              ...args,
+              skipGitRepoCheck:
+                args.skipGitRepoCheck ||
+                isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+            };
+            const { args: cliArgs, input } =
+              buildCodexReviewArgs(effectiveArgs);
+            const inputPrompt = input || "";
+            if (inputPrompt.length > deps.config.limits.maxInputChars) {
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text: `Prompt exceeds max input size (${deps.config.limits.maxInputChars} chars).`,
+                  },
+                ],
+              };
+            }
+
+            reservation = await deps.dailyBudget.reserve(
+              estimateTokensFromChars(inputPrompt.length || 1),
+            );
+
+            const result = await runCodexCommand({
+              command: deps.config.cli.command,
+              args: cliArgs,
+              input: inputPrompt || "",
+              cwd: args.cwd,
+              env: process.env,
+              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+            });
+
+            const stdout = result.stdout.trim();
+            const stderr = result.stderr.trim();
+            const combined = [stdout, stderr].filter(Boolean).join("\n");
+            const output = stdout || stderr;
+
+            const fatal =
+              combined.toLowerCase().includes("fatal error") ||
+              (combined.toLowerCase().includes("error:") &&
+                combined.toLowerCase().includes("usage:")) ||
+              combined.includes("Not inside a trusted directory");
+
+            if (result.exitCode !== 0 && !(result.exitCode === 1 && !fatal)) {
+              const err = new CodexCliError(
+                `Codex CLI exited with ${result.exitCode}`,
+              );
+              err.exitCode = result.exitCode ?? undefined;
+              err.stderr = result.stderr;
+              throw err;
+            }
+
+            text = output;
+            inputTokens = estimateTokensFromChars(inputPrompt.length || 1);
+            outputTokens = estimateTokensFromChars(text.length || 1);
+
+            await deps.dailyBudget.commit(
+              "codex_review",
+              inputTokens + outputTokens,
+              undefined,
+              reservation,
+            );
+            committed = true;
           }
-
-          text = output;
-          inputTokens = estimateTokensFromChars(inputPrompt.length || 1);
-          outputTokens = estimateTokensFromChars(text.length || 1);
-
-          await deps.dailyBudget.commit(
-            "codex_review",
-            inputTokens + outputTokens,
-            undefined,
-            reservation,
-          );
-          committed = true;
         } else {
           if (!diff) {
             throw new Error("API mode requires a diff payload.");
@@ -289,6 +395,14 @@ export function registerCodexReviewTool(
         deps.logger.error("codex_review failed", {
           error: redactString(formatted.message),
         });
+
+        // Log to centralized error log
+        deps.errorLogger.logError({
+          toolName: "codex_review",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
+
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

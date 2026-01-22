@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-21T22:35:23Z
+Last updated (UTC): 2026-01-22T14:07:00Z
 
 ## Status Discipline (Always)
 
@@ -14,9 +14,9 @@ Last updated (UTC): 2026-01-21T22:35:23Z
 
 ## Quick View
 
-### In Progress
+### Completed (Recent)
 
-- None (all Yes* tasks completed)
+- T11: Centralized Error Logging System
 
 ### Next Up
 
@@ -26,6 +26,7 @@ Last updated (UTC): 2026-01-21T22:35:23Z
 
 | ID | Task | Status | DoD |
 | --- | --- | --- | --- |
+| T11 | Codex MCP: Centralized Error Logging System | completed | Global JSONL error logs; platform paths; rotation; privacy levels; WSL support; tests; docs |
 | T03 | Codex MCP: Streaming responses support (CLI JSONL + OpenAI SSE) | completed | `codex_exec` supports streaming; tests for JSONL/SSE parsing; docs updated; build/test pass |
 | T04 | Codex MCP: Vision/image input analysis in API path | completed | Image input accepted in CLI+API; validation + tests; docs updated |
 | T05 | Codex MCP: Audio transcription tool (API-only) | completed | New tool + service; validation + tests; docs updated |
@@ -66,6 +67,106 @@ Planner/Critic/Verifier pass (T04):
 - Planner: add validation util; extend API client; wire to tool.
 - Critic: validate file exists, size, MIME; clear errors for missing/large files.
 - Verifier: tests for validation and API payload construction.
+
+### Completed Subtasks (T11) — Centralized Error Logging
+
+| ID | Task | Status | DoD |
+| --- | --- | --- | --- |
+| T11.a | Define logging config schema + env vars | completed | Config in `src/config.ts`; env overrides; docs updated |
+| T11.b | Implement platform-specific log path resolver | completed | Correct paths for Linux/macOS/Windows/WSL; WSL detection |
+| T11.c | Implement JSONL error log writer service | completed | Structured entries; atomic writes; directory creation |
+| T11.d | Implement smart redaction utility | completed | Mask API keys, tokens, secrets; preserve structure |
+| T11.e | Implement log rotation (time + size based) | completed | 7-day retention; 50MB size cap; cleanup old files |
+| T11.f | Implement tiered logging levels | completed | `off`/`errors`/`debug`/`full` with appropriate context |
+| T11.g | Integrate error logging into all tools | completed | All tool errors logged with context; stderr hint |
+| T11.h | Add WSL detection + one-time hint | completed | Detect WSL; print config hint on first run |
+| T11.i | Add tests for logging system | completed | Unit tests for paths, rotation, redaction, levels |
+| T11.j | Update docs (USER_MANUAL + TECHNICAL + CHANGELOG) | completed | Document config, paths, privacy, WSL |
+| T11.k | Verification + runbook note | completed | `npm test`, `npm run build`, `npm run lint` pass |
+
+#### T11 Detailed Instructions
+
+**T11.a: Define logging config schema + env vars**
+- Add to `src/config.ts`:
+  ```typescript
+  logging: z.object({
+    errorLogging: z.enum(["off", "errors", "debug", "full"]).default("errors"),
+    directory: z.string().optional(),  // override auto-detected path
+    maxFileSizeMb: z.number().default(50),
+    retentionDays: z.number().default(7),
+  }).default({})
+  ```
+- Env vars: `CODEX_MCP_LOG_LEVEL`, `CODEX_MCP_LOG_DIR`
+
+**T11.b: Implement platform-specific log path resolver**
+- Create `src/utils/logPaths.ts`:
+  - Linux: `$XDG_STATE_HOME/codex-mcp-bridge/logs/` (fallback `~/.local/state/...`)
+  - macOS: `~/Library/Logs/codex-mcp-bridge/`
+  - Windows: `%LOCALAPPDATA%\codex-mcp-bridge\logs\`
+  - WSL detection: check `/proc/version` for "microsoft" or `WSL_DISTRO_NAME` env
+- Priority: config > env var > auto-detect
+
+**T11.c: Implement JSONL error log writer service**
+- Create `src/services/errorLogger.ts`:
+  - JSONL format (one JSON object per line)
+  - Fields: timestamp, level, mcpVersion, sessionId, requestId, toolName, toolArgs (metadata only), clientName, aiModel, osInfo, errorType, message, stackTrace, redacted flag
+  - Atomic writes (write to temp, rename)
+  - Auto-create directory with secure permissions (0o700)
+  - File: `mcp-errors.log` (current), `mcp-errors-YYYY-MM-DD.log` (rotated)
+
+**T11.d: Implement smart redaction utility**
+- Create `src/utils/redactForLog.ts`:
+  - Mask patterns: `sk-...`, `Bearer ...`, `api_key=...`, `password=...`, `token=...`
+  - For tool args: log metadata (lengths, hashes) not raw content
+  - `promptLength`, `promptHash` (SHA256 truncated), `diffLength`
+  - Return `{ redacted: true, data: {...} }` wrapper
+
+**T11.e: Implement log rotation (time + size based)**
+- On startup and periodically:
+  - If `mcp-errors.log` is from previous day → rotate to `mcp-errors-YYYY-MM-DD.log`
+  - If current file > `maxFileSizeMb` → rotate immediately
+  - Delete files older than `retentionDays`
+  - Optional: gzip rotated files
+
+**T11.f: Implement tiered logging levels**
+- `off`: No file logging (stderr only for fatal)
+- `errors` (default): Log errors with metadata (lengths, hashes, no raw content)
+- `debug`: Add truncated prompt prefix (first 100 chars after redaction)
+- `full`: Log full prompts/diffs (still redact secrets); print warning; consider time-box
+
+**T11.g: Integrate error logging into all tools**
+- In each tool's catch block, call `errorLogger.logError({ toolName, args, error, ... })`
+- Print stderr hint: `[MCP-ERROR] See <log_path> for details`
+- Capture: tool name, sanitized args, error type, message, stack
+
+**T11.h: Add WSL detection + one-time hint**
+- On first startup in WSL, log info message:
+  ```
+  Running in WSL. Logs at ~/.local/state/codex-mcp-bridge/logs/
+  For Windows access, set CODEX_MCP_LOG_DIR=/mnt/c/Users/<user>/AppData/Local/codex-mcp-bridge/logs
+  ```
+- Store "hint shown" flag in config directory to avoid repeating
+
+**T11.i: Add tests for logging system**
+- Test path resolution for each platform (mock `process.platform`)
+- Test rotation logic (mock file dates/sizes)
+- Test redaction patterns (API keys, tokens, prompts)
+- Test tiered levels produce correct output
+- Test WSL detection
+
+**T11.j: Update docs**
+- USER_MANUAL.md: Add "Error Logging" section with config options, paths, privacy
+- TECHNICAL.md: Add architecture notes for logging service
+- CHANGELOG.md: Add entry for new feature
+
+Planner/Critic/Verifier pass (T11):
+- Planner: layered privacy approach; platform-aware paths; rotation for disk safety.
+- Critic: never log raw secrets; default to privacy-preserving; WSL perf concerns with /mnt/c.
+- Verifier: tests for all platforms; redaction coverage; rotation edge cases.
+
+Consensus: Gemini + Codex agree on layered approach with opt-in full logging and smart redaction.
+
+---
 
 ### Active Subtasks (T10)
 
@@ -148,8 +249,8 @@ Reason: user request to plan Codex MCP Yes* implementation tasks.
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-21T22:35:23Z
+Last verified (UTC): 2026-01-22T14:06:48Z
 
-- `npm test` — 105 tests passed (3 skipped)
+- `npm test` — 141 tests passed (3 skipped)
 - `npm run build` — success
 - `npm run lint` — clean

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Logging: Add centralized error logging system with JSONL format, platform-specific paths, tiered privacy levels (`off`/`errors`/`debug`/`full`), smart redaction, log rotation, and WSL detection with hints.
+- Tools: `codex_review` diff-based reviews now fall back to `codex exec` when no API key is available, allowing diff reviews with just `codex login` auth. API key path is still preferred for faster direct API calls.
 - Release budget reservations on tool errors.
 - Enforce max input size for codex_review prompts (CLI + API).
 - Doctor API check now honors API key files.

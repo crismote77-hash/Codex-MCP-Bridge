@@ -3,6 +3,7 @@ import type { BridgeConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { RateLimiter } from "./limits/rateLimiter.js";
 import { DailyTokenBudget } from "./limits/dailyTokenBudget.js";
+import type { ErrorLogger } from "./services/errorLogger.js";
 import { registerTools } from "./tools/index.js";
 import { registerResources } from "./resources/index.js";
 
@@ -11,6 +12,7 @@ export type SharedDependencies = {
   logger: Logger;
   rateLimiter: RateLimiter;
   dailyBudget: DailyTokenBudget;
+  errorLogger: ErrorLogger;
 };
 
 export function createMcpServer(

@@ -82,6 +82,11 @@ export function registerCodexWebFetchTool(
         deps.logger.error("codex_web_fetch failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_web_fetch",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

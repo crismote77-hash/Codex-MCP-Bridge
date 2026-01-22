@@ -7,6 +7,7 @@ import type { SharedDependencies } from "../src/server.js";
 import type { Logger } from "../src/logger.js";
 import type { RateLimiter } from "../src/limits/rateLimiter.js";
 import type { DailyTokenBudget } from "../src/limits/dailyTokenBudget.js";
+import type { ErrorLogger } from "../src/services/errorLogger.js";
 
 class FakeServer {
   tools: Record<string, (args: unknown) => Promise<unknown>> = {};
@@ -40,7 +41,11 @@ function createDeps(env: NodeJS.ProcessEnv): SharedDependencies {
     commit: vi.fn().mockResolvedValue(undefined),
     release: vi.fn().mockResolvedValue(undefined),
   } as unknown as DailyTokenBudget;
-  return { config, logger, rateLimiter, dailyBudget };
+  const errorLogger = {
+    logError: vi.fn(),
+    initialize: vi.fn(),
+  } as unknown as ErrorLogger;
+  return { config, logger, rateLimiter, dailyBudget, errorLogger };
 }
 
 beforeEach(() => {

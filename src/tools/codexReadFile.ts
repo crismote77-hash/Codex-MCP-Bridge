@@ -45,6 +45,11 @@ export function registerCodexReadFileTool(
         deps.logger.error("codex_read_file failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_read_file",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

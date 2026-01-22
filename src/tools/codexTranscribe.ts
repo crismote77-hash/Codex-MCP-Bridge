@@ -142,6 +142,13 @@ export function registerCodexTranscribeTool(
         deps.logger.error("codex_transcribe_audio failed", {
           error: redactString(formatted.message),
         });
+
+        deps.errorLogger.logError({
+          toolName: "codex_transcribe_audio",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
+
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

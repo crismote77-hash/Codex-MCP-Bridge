@@ -19,6 +19,7 @@ import { expandHome } from "./utils/paths.js";
 import { isRecord } from "./utils/typeGuards.js";
 import { addTrustedDir, isTrustedCwd } from "./utils/trustDirs.js";
 import { runOpenAI } from "./services/openaiClient.js";
+import { createErrorLogger, setMcpVersion } from "./services/errorLogger.js";
 
 type CliCommand =
   | {
@@ -667,7 +668,21 @@ async function main(): Promise<void> {
     maxTokensPerDay: config.limits.maxTokensPerDay,
     sharedStore: sharedLimitStore ?? undefined,
   });
-  const sharedDeps = { config, logger, rateLimiter, dailyBudget };
+
+  // Initialize error logger for centralized error tracking
+  setMcpVersion(pkg.version);
+  const errorLogger = createErrorLogger(
+    {
+      errorLogging: config.logging.errorLogging,
+      directory: config.logging.directory,
+      maxFileSizeMb: config.logging.maxFileSizeMb,
+      retentionDays: config.logging.retentionDays,
+    },
+    logger,
+  );
+  errorLogger.initialize();
+
+  const sharedDeps = { config, logger, rateLimiter, dailyBudget, errorLogger };
 
   let closeServer: (() => Promise<void>) | null = null;
 

@@ -97,10 +97,13 @@ We model these as optional tool arguments and pass them through to the CLI.
     - Validates count (`limits.maxImages`) and size (`limits.maxImageBytes`).
 
 - `codex_review`
-  - CLI mode: runs `codex review`.
+  - CLI mode: runs `codex review` for repo-based reviews (using git flags like `--uncommitted`, `--base`, `--commit`).
   - CLI mode supports `cwd` so callers can target a specific repo even if the MCP server starts elsewhere.
-  - API mode: requires a diff payload and runs a review prompt against the API.
-  - Enforces max input size for prompt + diff (API mode) and prompt (CLI mode).
+  - Diff-based reviews (passing a raw `diff` string):
+    - Preferred: When an API key is available, calls the OpenAI API directly for faster, more direct review.
+    - Fallback: When no API key is available, routes the diff through `codex exec` using CLI auth (including ChatGPT login).
+    - This fallback allows diff reviews to work with just `codex login`, without requiring a separate API key.
+  - Enforces max input size for prompt + diff (both API and CLI fallback modes) and prompt (CLI review mode).
 
 - `codex_transcribe_audio`
   - Transcribes audio using OpenAI's Whisper API (API-only).
@@ -219,6 +222,75 @@ Wizard prompt groups:
 - Tool failures return `{ isError: true, content: [...] }` with actionable guidance.
 - Avoid throwing from tool handlers except for protocol-level failures.
 - Redact secrets from logs and error messages.
+
+---
+
+## Centralized Error Logging
+
+The bridge implements centralized error logging for debugging and documentation improvement.
+
+### Architecture
+
+```
+src/services/errorLogger.ts   # ErrorLogger class, JSONL writer
+src/utils/logPaths.ts         # Platform-specific path resolution, WSL detection
+src/utils/redactForLog.ts     # Sensitive data redaction, arg sanitization
+```
+
+### Log Entry Structure (JSONL)
+
+Each error is logged as a single JSON line:
+```json
+{
+  "timestamp": "2024-03-15T12:00:00.000Z",
+  "level": "ERROR",
+  "mcpVersion": "0.1.0",
+  "sessionId": "uuid",
+  "toolName": "codex_exec",
+  "toolArgs": { "promptLength": 100, "promptHash": "abc123...", "model": "o3" },
+  "osInfo": { "platform": "linux", "release": "...", "arch": "x64", "isWSL": false },
+  "errorType": "Error",
+  "message": "API request failed",
+  "stackTrace": "...",
+  "redacted": true
+}
+```
+
+### Privacy Tiers
+
+- **`errors`** (default): Log sanitized metadata (lengths, hashes, non-sensitive fields)
+- **`debug`**: Add truncated previews and stack traces
+- **`full`**: Include full content (for debugging only; may contain sensitive data)
+
+### Redaction Patterns
+
+The `redactSensitiveString()` function redacts:
+- API keys (OpenAI, Anthropic, Tavily, Google, AWS, GitHub)
+- Bearer tokens, passwords, secrets
+- Private keys
+
+The `sanitizeToolArgs()` function extracts:
+- Lengths and hashes for sensitive fields (`prompt`, `diff`, `content`)
+- Array counts instead of full arrays at `errors` level
+- Full arrays at `debug`/`full` levels
+
+### Platform-Specific Paths
+
+- Linux/WSL: `$XDG_STATE_HOME/codex-mcp-bridge/logs/` (default `~/.local/state/...`)
+- macOS: `~/Library/Logs/codex-mcp-bridge/`
+- Windows: `%LOCALAPPDATA%\codex-mcp-bridge\logs\`
+
+### Log Rotation
+
+- **Date-based**: Rotates daily (`mcp-errors-YYYY-MM-DD.log`)
+- **Size-based**: Rotates when exceeding `maxFileSizeMb` (default 50MB)
+- **Retention**: Deletes logs older than `retentionDays` (default 7)
+
+### WSL Handling
+
+WSL is detected via `/proc/version` or `WSL_DISTRO_NAME` env var. When running in WSL:
+- Logs default to Linux XDG paths
+- A one-time stderr hint suggests setting `CODEX_MCP_LOG_DIR` for Windows access
 
 ---
 

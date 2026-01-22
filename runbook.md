@@ -94,3 +94,15 @@
 
 - Completed T03-T06: streaming responses (JSONL/SSE parsing), vision/image input (multimodal API), audio transcription (Whisper API), image generation (DALL-E API); 105 tests pass; all docs updated
 
+## 2026-01-22T12:47:43Z
+
+- Session: (1) Fixed codex_review to fallback to codex exec for diff reviews when no API key available - no longer errors, uses CLI auth. (2) Updated docs/tests for new behavior. (3) Consulted Gemini+Codex on centralized error logging design - consensus on layered privacy approach with JSONL format, platform-specific paths, smart redaction, tiered levels. (4) Added T11 task breakdown to STATUS.md with 11 subtasks. Verification: npm test (105 passed), npm run build (success), npm run lint (clean). Next: implement T11 centralized error logging.
+
+## 2026-01-22T13:06:48Z
+
+- T11: Implemented centralized error logging system with JSONL format, platform-specific paths, tiered privacy levels (off/errors/debug/full), smart redaction, log rotation, and WSL detection. Verified with 141 tests passing. Build and lint pass. Added docs in USER_MANUAL.md, TECHNICAL.md, CHANGELOG.md. Next: user verification.
+
+## 2026-01-22T16:27:07Z
+
+- Code review of T11 error logging files with Gemini. Fixed Authorization redaction pattern in redactForLog.ts (removed \s from value character class to prevent over-matching). Kept sync I/O in errorLogger.ts (appropriate for error logging). Tests/build/lint pass.
+

@@ -469,6 +469,14 @@ export function registerCodexExecTool(
         deps.logger.error("codex_exec failed", {
           error: redactString(formatted.message),
         });
+
+        // Log to centralized error log
+        deps.errorLogger.logError({
+          toolName: "codex_exec",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
+
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

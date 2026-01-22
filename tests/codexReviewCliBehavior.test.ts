@@ -9,6 +9,7 @@ import type { SharedDependencies } from "../src/server.js";
 import type { Logger } from "../src/logger.js";
 import type { RateLimiter } from "../src/limits/rateLimiter.js";
 import type { DailyTokenBudget } from "../src/limits/dailyTokenBudget.js";
+import type { ErrorLogger } from "../src/services/errorLogger.js";
 import { runCodexCommand } from "../src/services/codexCli.js";
 
 vi.mock("../src/services/codexCli.js", async (importOriginal) => {
@@ -72,12 +73,17 @@ async function createDeps(opts: { authMode?: "auto" | "cli" | "api_key" }): Prom
     commit: vi.fn().mockResolvedValue(undefined),
     release: vi.fn().mockResolvedValue(undefined),
   } as unknown as DailyTokenBudget;
+  const errorLogger = {
+    logError: vi.fn(),
+    initialize: vi.fn(),
+  } as unknown as ErrorLogger;
 
   const deps: SharedDependencies = {
     config,
     logger,
     rateLimiter,
     dailyBudget,
+    errorLogger,
   };
 
   return { deps, dailyBudget };
@@ -153,18 +159,28 @@ describe("codex_review (CLI mode)", () => {
 });
 
 describe("codex_review (diff review)", () => {
-  it("requires API-key auth even when CLI auth exists", async () => {
+  it("falls back to codex exec when no API key is available", async () => {
     const { deps } = await createDeps({ authMode: "auto" });
     const server = new FakeServer();
     registerCodexReviewTool(server as unknown as McpServer, deps);
     const handler = server.tools["codex_review"];
 
+    vi.mocked(runCodexCommand).mockResolvedValueOnce({
+      stdout: "Review complete: No issues found.",
+      stderr: "",
+      exitCode: 0,
+    });
+
     const result = (await handler({
       diff: "--- a/a.txt\n+++ b/a.txt\n@@\n+hi\n",
     })) as { isError?: boolean; content?: Array<{ text?: string }> };
 
-    expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain("Diff reviews require API-key auth");
-    expect(vi.mocked(runCodexCommand)).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    expect(result.content?.[0]?.text).toContain("Review complete");
+    // Should call codex exec (not codex review) as fallback
+    expect(vi.mocked(runCodexCommand)).toHaveBeenCalledTimes(1);
+    const callArgs = vi.mocked(runCodexCommand).mock.calls[0][0].args;
+    expect(callArgs).toContain("exec");
+    expect(callArgs).not.toContain("review");
   });
 });

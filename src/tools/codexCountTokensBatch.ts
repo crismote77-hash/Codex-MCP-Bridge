@@ -72,6 +72,11 @@ export function registerCodexCountTokensBatchTool(
         deps.logger.error("codex_count_tokens_batch failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_count_tokens_batch",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

@@ -88,6 +88,11 @@ export function registerCodexWebSearchTool(
         deps.logger.error("codex_web_search failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_web_search",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

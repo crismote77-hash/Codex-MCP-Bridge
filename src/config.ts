@@ -87,6 +87,12 @@ const configSchema = z
     logging: z
       .object({
         debug: z.boolean().default(false),
+        errorLogging: z
+          .enum(["off", "errors", "debug", "full"])
+          .default("errors"),
+        directory: z.string().optional(), // override auto-detected path
+        maxFileSizeMb: z.number().int().positive().default(50),
+        retentionDays: z.number().int().positive().default(7),
       })
       .default({}),
     transport: z
@@ -422,6 +428,33 @@ export function loadConfig(
     merged.web = {
       ...(merged.web as object),
       allowLocalhost: parseBooleanEnv(env.CODEX_MCP_WEB_ALLOW_LOCALHOST),
+    };
+
+  if (env.CODEX_MCP_LOG_LEVEL)
+    merged.logging = {
+      ...(merged.logging as object),
+      errorLogging: env.CODEX_MCP_LOG_LEVEL,
+    };
+  if (env.CODEX_MCP_LOG_DIR)
+    merged.logging = {
+      ...(merged.logging as object),
+      directory: env.CODEX_MCP_LOG_DIR,
+    };
+  if (env.CODEX_MCP_LOG_MAX_SIZE_MB)
+    merged.logging = {
+      ...(merged.logging as object),
+      maxFileSizeMb: parseIntEnv(
+        env.CODEX_MCP_LOG_MAX_SIZE_MB,
+        "CODEX_MCP_LOG_MAX_SIZE_MB",
+      ),
+    };
+  if (env.CODEX_MCP_LOG_RETENTION_DAYS)
+    merged.logging = {
+      ...(merged.logging as object),
+      retentionDays: parseIntEnv(
+        env.CODEX_MCP_LOG_RETENTION_DAYS,
+        "CODEX_MCP_LOG_RETENTION_DAYS",
+      ),
     };
 
   if (env.CODEX_MCP_TRANSPORT_MODE)

@@ -175,6 +175,11 @@ export function registerCodexGenerateImageTool(
         deps.logger.error("codex_generate_image failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_generate_image",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

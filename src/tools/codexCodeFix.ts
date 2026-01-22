@@ -288,6 +288,11 @@ export function registerCodexCodeFixTool(
         deps.logger.error("codex_code_fix failed", {
           error: redactString(formatted.message),
         });
+        deps.errorLogger.logError({
+          toolName: "codex_code_fix",
+          toolArgs: args as Record<string, unknown>,
+          error,
+        });
         return {
           isError: true,
           content: [{ type: "text", text: formatted.message }],

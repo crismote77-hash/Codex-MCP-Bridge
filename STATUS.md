@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-22T14:07:00Z
+Last updated (UTC): 2026-01-22T18:16:20Z
 
 ## Status Discipline (Always)
 
@@ -17,6 +17,8 @@ Last updated (UTC): 2026-01-22T14:07:00Z
 ### Completed (Recent)
 
 - T11: Centralized Error Logging System
+- T12: Reduce tool errors for disabled filesystem + untrusted CLI review paths
+- T13: Auto git-root defaults (filesystem + trust)
 
 ### Next Up
 
@@ -27,6 +29,8 @@ Last updated (UTC): 2026-01-22T14:07:00Z
 | ID | Task | Status | DoD |
 | --- | --- | --- | --- |
 | T11 | Codex MCP: Centralized Error Logging System | completed | Global JSONL error logs; platform paths; rotation; privacy levels; WSL support; tests; docs |
+| T12 | Codex MCP: Reduce tool errors for disabled filesystem + untrusted CLI review paths | completed | Filesystem tools gated by roots; codex_review trust retry; tests + docs + changelog |
+| T13 | Codex MCP: Auto git-root defaults (filesystem + trust) | completed | Auto-set `filesystem.roots` + `trust.trustedDirs` to git repo root on startup; optional first-run config write; tests + docs |
 | T03 | Codex MCP: Streaming responses support (CLI JSONL + OpenAI SSE) | completed | `codex_exec` supports streaming; tests for JSONL/SSE parsing; docs updated; build/test pass |
 | T04 | Codex MCP: Vision/image input analysis in API path | completed | Image input accepted in CLI+API; validation + tests; docs updated |
 | T05 | Codex MCP: Audio transcription tool (API-only) | completed | New tool + service; validation + tests; docs updated |
@@ -35,6 +39,14 @@ Last updated (UTC): 2026-01-22T14:07:00Z
 | T08 | Codex MCP: Token counting tools (accurate) | completed | Tokenizer integration; batch support; tests; docs updated |
 | T09 | Codex MCP: Repo-aware patch generation tool | completed | Safe file read + diff generation; patch validation; tests; docs updated |
 | T10 | Codex MCP: Local file read/search tools | completed | Read/search tools with path limits; tests; docs updated |
+
+### Active Subtasks (T13)
+
+| ID | Task | Status | DoD |
+| --- | --- | --- | --- |
+| T13.a | Detect git root + autoroot helper | completed | `findGitRoot` + startup autoroot applied; tests added |
+| T13.b | Update docs + changelog + runbook | completed | USER_MANUAL/TECHNICAL/CHANGELOG updated; runbook note appended |
+| T13.c | Verification snapshot | completed | `npm test`, `npm run build`, `npm run lint` recorded |
 
 ### Active Subtasks (T03)
 
@@ -83,6 +95,19 @@ Planner/Critic/Verifier pass (T04):
 | T11.i | Add tests for logging system | completed | Unit tests for paths, rotation, redaction, levels |
 | T11.j | Update docs (USER_MANUAL + TECHNICAL + CHANGELOG) | completed | Document config, paths, privacy, WSL |
 | T11.k | Verification + runbook note | completed | `npm test`, `npm run build`, `npm run lint` pass |
+
+### Active Subtasks (T12)
+
+| ID | Task | Status | DoD |
+| --- | --- | --- | --- |
+| T12.a | Gate filesystem tools on configured roots | completed | registerTools skips filesystem tools when roots empty; test coverage |
+| T12.b | Add codex_review trust retry | completed | Retry on untrusted-dir error with --skip-git-repo-check; tests cover |
+| T12.c | Update docs + changelog + runbook | completed | USER_MANUAL/TECHNICAL/CHANGELOG updated; runbook note appended |
+
+Planner/Critic/Verifier pass (T12):
+- Planner: gate filesystem tools by roots; add trust retry; update tests/docs.
+- Critic: avoid widening filesystem access; keep trust retry limited to CLI hint.
+- Verifier: run targeted tests; update STATUS + runbook.
 
 #### T11 Detailed Instructions
 
@@ -249,8 +274,8 @@ Reason: user request to plan Codex MCP Yes* implementation tasks.
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-22T14:06:48Z
+Last verified (UTC): 2026-01-22T18:15:49Z
 
-- `npm test` — 141 tests passed (3 skipped)
+- `npm test` — 150 tests passed
 - `npm run build` — success
 - `npm run lint` — clean

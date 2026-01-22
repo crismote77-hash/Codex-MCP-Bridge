@@ -6,6 +6,7 @@ import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { registerCodexReadFileTool } from "../src/tools/codexReadFile.js";
 import { registerCodexSearchFilesTool } from "../src/tools/codexSearchFiles.js";
+import { registerTools } from "../src/tools/index.js";
 import { loadConfig } from "../src/config.js";
 import type { SharedDependencies } from "../src/server.js";
 import type { Logger } from "../src/logger.js";
@@ -62,6 +63,16 @@ async function withTempDir<T>(fn: (root: string) => Promise<T>): Promise<T> {
 }
 
 describe("filesystem tools", () => {
+  it("skips filesystem tool registration when roots are not configured", async () => {
+    const deps = createDeps({} as NodeJS.ProcessEnv);
+    const server = new FakeServer();
+    registerTools(server as unknown as McpServer, deps);
+
+    expect(server.tools["codex_read_file"]).toBeUndefined();
+    expect(server.tools["codex_search_files"]).toBeUndefined();
+    expect(server.tools["codex_code_fix"]).toBeUndefined();
+  });
+
   it("codex_read_file rejects when roots are not configured", async () => {
     const deps = createDeps({} as NodeJS.ProcessEnv);
     const server = new FakeServer();

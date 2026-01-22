@@ -285,7 +285,8 @@ Additional options:
   - `codex_exec` supports `cwd` to run in a specific directory (recommended for code-related tasks).
   - `codex_review` (CLI mode) must run inside a Git repository; use `cwd` if your MCP client launches servers from a different directory.
 - Trusted directories:
-  - On startup, the bridge can prompt to trust a directory (TTY required). Trusted dirs auto-apply `--skip-git-repo-check` for `codex_exec` and `codex_review` when `cwd` is inside the path.
+  - On startup, if no trusted dirs are configured and the server is running inside a git repo, the bridge auto-trusts the repo root (no prompt) and auto-applies `--skip-git-repo-check` for `codex_exec` and `codex_review`.
+  - If Codex CLI reports an untrusted directory, the bridge retries once with `--skip-git-repo-check`.
 - Review prompts:
   - Codex CLI does not accept `prompt` together with `uncommitted`, `base`, or `commit`; the bridge ignores `prompt` when any of those are set.
 - Exit codes:
@@ -299,6 +300,7 @@ Additional options:
   - Limits: `limits.maxImages` (default 5), `limits.maxImageBytes` (default 20MB).
 - Filesystem access:
   - `codex_read_file` and `codex_search_files` only operate inside configured `filesystem.roots`.
+  - If `filesystem.roots` is empty and the server is running inside a git repo, the bridge auto-sets `filesystem.roots` to the repo root so filesystem tools are available. If no git repo is detected, filesystem tools remain disabled.
   - `codex_search_files` uses regex search in `content`/`grep` mode and glob path search in `path`/`glob` mode.
   - When multiple roots are configured, `codex_search_files` requires `directory` to choose one.
   - `codex_code_fix` reads files from configured roots and can optionally apply patches when `filesystem.allowWrite` is enabled.
@@ -320,7 +322,7 @@ Additional options:
 
 ## Configuration
 
-Config file (optional): `~/.codex-mcp-bridge/config.json`
+Config file (optional): `~/.codex-mcp-bridge/config.json` (may be created automatically on first run with git-root defaults)
 
 Example:
 ```json

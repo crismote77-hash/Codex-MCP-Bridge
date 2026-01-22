@@ -106,3 +106,11 @@
 
 - Code review of T11 error logging files with Gemini. Fixed Authorization redaction pattern in redactForLog.ts (removed \s from value character class to prevent over-matching). Kept sync I/O in errorLogger.ts (appropriate for error logging). Tests/build/lint pass.
 
+## 2026-01-22T17:22:12Z
+
+- Gate filesystem tools when roots empty; retry codex_review on untrusted dir; tests: npm test -- tests/filesystemTools.test.ts tests/codexReviewCliBehavior.test.ts; next: user verify in client
+
+## 2026-01-22T18:16:37Z
+
+- T13: Auto git-root defaults for filesystem + trust (no opt-in); auto-create minimal config on first run; codex_exec/codex_review trust check uses effective cwd; verified: npm test, npm run build, npm run lint
+

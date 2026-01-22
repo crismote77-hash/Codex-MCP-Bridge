@@ -156,6 +156,39 @@ describe("codex_review (CLI mode)", () => {
     expect(result.isError).toBe(true);
     expect(result.content?.[0]?.text).toContain("Codex CLI failed");
   });
+
+  it("retries with --skip-git-repo-check when CLI reports untrusted directory", async () => {
+    const { deps } = await createDeps({ authMode: "cli" });
+    const server = new FakeServer();
+    registerCodexReviewTool(server as unknown as McpServer, deps);
+    const handler = server.tools["codex_review"];
+
+    vi.mocked(runCodexCommand)
+      .mockResolvedValueOnce({
+        stdout: "",
+        stderr:
+          "Not inside a trusted directory. Run with --skip-git-repo-check",
+        exitCode: 2,
+      })
+      .mockResolvedValueOnce({
+        stdout: "review output",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = (await handler({
+      uncommitted: true,
+      cwd: "/tmp",
+    })) as { isError?: boolean; content?: Array<{ text?: string }> };
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content?.[0]?.text).toBe("review output");
+    expect(vi.mocked(runCodexCommand)).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] =
+      vi.mocked(runCodexCommand).mock.calls;
+    expect(firstCall[0].args).not.toContain("--skip-git-repo-check");
+    expect(secondCall[0].args).toContain("--skip-git-repo-check");
+  });
 });
 
 describe("codex_review (diff review)", () => {
@@ -182,5 +215,39 @@ describe("codex_review (diff review)", () => {
     const callArgs = vi.mocked(runCodexCommand).mock.calls[0][0].args;
     expect(callArgs).toContain("exec");
     expect(callArgs).not.toContain("review");
+  });
+
+  it("retries diff fallback with --skip-git-repo-check on untrusted directory", async () => {
+    const { deps } = await createDeps({ authMode: "auto" });
+    const server = new FakeServer();
+    registerCodexReviewTool(server as unknown as McpServer, deps);
+    const handler = server.tools["codex_review"];
+
+    vi.mocked(runCodexCommand)
+      .mockResolvedValueOnce({
+        stdout: "",
+        stderr:
+          "Not inside a trusted directory. Run with --skip-git-repo-check",
+        exitCode: 2,
+      })
+      .mockResolvedValueOnce({
+        stdout: "Review complete.",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = (await handler({
+      diff: "--- a/a.txt\n+++ b/a.txt\n@@\n+hi\n",
+      cwd: "/tmp",
+    })) as { isError?: boolean; content?: Array<{ text?: string }> };
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content?.[0]?.text).toContain("Review complete");
+    expect(vi.mocked(runCodexCommand)).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] =
+      vi.mocked(runCodexCommand).mock.calls;
+    expect(firstCall[0].args).toContain("exec");
+    expect(firstCall[0].args).not.toContain("--skip-git-repo-check");
+    expect(secondCall[0].args).toContain("--skip-git-repo-check");
   });
 });

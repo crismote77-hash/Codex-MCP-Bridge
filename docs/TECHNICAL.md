@@ -61,6 +61,8 @@ Compatibility fallback:
 Trusted directories:
 - On startup, if `trust.promptOnStart` is enabled, the server tries to prompt on `/dev/tty` to trust `trust.promptDir` (or `process.cwd()`).
 - Trusted dirs are persisted to the config file and used to auto-apply `--skip-git-repo-check` for `codex_exec` and `codex_review` when `cwd` is within those paths.
+- If Codex CLI returns an untrusted-directory error, the bridge retries once with `--skip-git-repo-check` (CLI mode only).
+- If no trusted dirs are configured and the server is running inside a git repo, the bridge auto-trusts the repo root (no prompt) and can write a minimal config file on first run.
 
 ## Codex CLI Idiosyncrasies (Modeled)
 
@@ -132,7 +134,7 @@ All tools enforce:
 - `codex_code_fix` reads files, asks a model for a unified diff, validates patch
   paths, and optionally applies via `git apply` when `filesystem.allowWrite` is
   enabled.
-- Filesystem access is gated by `filesystem.roots` (empty disables tools).
+- Filesystem access is gated by `filesystem.roots`. If empty and the server is running inside a git repo, the bridge auto-sets roots to the repo root; otherwise filesystem tools are skipped.
 - Safety limits: `filesystem.maxFileBytes`, `filesystem.maxSearchResults`,
   `filesystem.maxFiles`, and `filesystem.maxTotalBytes` (batch uses).
 

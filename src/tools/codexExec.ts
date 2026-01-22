@@ -256,11 +256,12 @@ export function registerCodexExecTool(
         let outputTokens = 0;
 
         if (auth.type === "cli") {
+          const cwdForTrust = args.cwd ?? process.cwd();
           const baseArgs: CodexExecArgs = {
             ...args,
             skipGitRepoCheck:
               args.skipGitRepoCheck ||
-              isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+              isTrustedCwd(cwdForTrust, deps.config.trust.trustedDirs),
           };
 
           // Streaming mode: use JSONL streaming

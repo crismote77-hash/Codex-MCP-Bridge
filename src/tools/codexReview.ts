@@ -114,6 +114,15 @@ export function registerCodexReviewTool(
 
         const diff = args.diff?.trim();
         const wantsDiffReview = Boolean(diff);
+        const cwdForTrust = args.cwd ?? process.cwd();
+        const shouldRetryTrust = (
+          result: { exitCode: number | null; stderr: string },
+          skipGitRepoCheck: boolean,
+        ): boolean =>
+          result.exitCode !== 0 &&
+          !skipGitRepoCheck &&
+          result.stderr.includes("Not inside a trusted directory") &&
+          result.stderr.includes("skip-git-repo-check");
 
         // For diff reviews, try API key first; if unavailable, fall back to CLI exec
         let auth: ReturnType<typeof resolveAuth>;
@@ -193,25 +202,33 @@ export function registerCodexReviewTool(
               estimateTokensFromChars(reviewPrompt.length),
             );
 
-            const effectiveArgs = {
+            const baseArgs = {
               ...args,
               skipGitRepoCheck:
                 args.skipGitRepoCheck ||
-                isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+                isTrustedCwd(cwdForTrust, deps.config.trust.trustedDirs),
             };
-            const execArgs = buildCodexExecArgsForDiffReview(
-              effectiveArgs,
-              deps.config,
-            );
+            const runExec = async (
+              override?: Partial<CodexReviewArgs>,
+            ): Promise<Awaited<ReturnType<typeof runCodexCommand>>> => {
+              const execArgs = buildCodexExecArgsForDiffReview(
+                { ...baseArgs, ...(override ?? {}) },
+                deps.config,
+              );
+              return runCodexCommand({
+                command: deps.config.cli.command,
+                args: execArgs,
+                input: reviewPrompt,
+                cwd: args.cwd,
+                env: process.env,
+                timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+              });
+            };
 
-            const result = await runCodexCommand({
-              command: deps.config.cli.command,
-              args: execArgs,
-              input: reviewPrompt,
-              cwd: args.cwd,
-              env: process.env,
-              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
-            });
+            let result = await runExec();
+            if (shouldRetryTrust(result, baseArgs.skipGitRepoCheck)) {
+              result = await runExec({ skipGitRepoCheck: true });
+            }
 
             const stdout = result.stdout.trim();
             const stderr = result.stderr.trim();
@@ -246,14 +263,13 @@ export function registerCodexReviewTool(
             committed = true;
           } else {
             // Standard CLI review path (repo-based)
-            const effectiveArgs = {
+            const baseArgs = {
               ...args,
               skipGitRepoCheck:
                 args.skipGitRepoCheck ||
-                isTrustedCwd(args.cwd, deps.config.trust.trustedDirs),
+                isTrustedCwd(cwdForTrust, deps.config.trust.trustedDirs),
             };
-            const { args: cliArgs, input } =
-              buildCodexReviewArgs(effectiveArgs);
+            const { input } = buildCodexReviewArgs(baseArgs);
             const inputPrompt = input || "";
             if (inputPrompt.length > deps.config.limits.maxInputChars) {
               return {
@@ -271,14 +287,27 @@ export function registerCodexReviewTool(
               estimateTokensFromChars(inputPrompt.length || 1),
             );
 
-            const result = await runCodexCommand({
-              command: deps.config.cli.command,
-              args: cliArgs,
-              input: inputPrompt || "",
-              cwd: args.cwd,
-              env: process.env,
-              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
-            });
+            const runReview = async (
+              override?: Partial<CodexReviewArgs>,
+            ): Promise<Awaited<ReturnType<typeof runCodexCommand>>> => {
+              const { args: cliArgs } = buildCodexReviewArgs({
+                ...baseArgs,
+                ...(override ?? {}),
+              });
+              return runCodexCommand({
+                command: deps.config.cli.command,
+                args: cliArgs,
+                input: inputPrompt || "",
+                cwd: args.cwd,
+                env: process.env,
+                timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+              });
+            };
+
+            let result = await runReview();
+            if (shouldRetryTrust(result, baseArgs.skipGitRepoCheck)) {
+              result = await runReview({ skipGitRepoCheck: true });
+            }
 
             const stdout = result.stdout.trim();
             const stderr = result.stderr.trim();

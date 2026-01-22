@@ -18,9 +18,14 @@ export function registerTools(
 ): void {
   registerCodexExecTool(server, deps);
   registerCodexReviewTool(server, deps);
-  registerCodexReadFileTool(server, deps);
-  registerCodexSearchFilesTool(server, deps);
-  registerCodexCodeFixTool(server, deps);
+  const filesystemEnabled = deps.config.filesystem.roots.some(
+    (root) => root.trim().length > 0,
+  );
+  if (filesystemEnabled) {
+    registerCodexReadFileTool(server, deps);
+    registerCodexSearchFilesTool(server, deps);
+    registerCodexCodeFixTool(server, deps);
+  }
   registerCodexCountTokensTool(server, deps);
   registerCodexCountTokensBatchTool(server, deps);
   registerCodexWebSearchTool(server, deps);

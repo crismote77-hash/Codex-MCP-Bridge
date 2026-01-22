@@ -18,6 +18,7 @@ import { redactMeta, redactString } from "./utils/redact.js";
 import { expandHome } from "./utils/paths.js";
 import { isRecord } from "./utils/typeGuards.js";
 import { addTrustedDir, isTrustedCwd } from "./utils/trustDirs.js";
+import { applyAutoGitRootDefaults } from "./utils/autoroot.js";
 import { runOpenAI } from "./services/openaiClient.js";
 import { createErrorLogger, setMcpVersion } from "./services/errorLogger.js";
 
@@ -640,8 +641,18 @@ async function main(): Promise<void> {
   const httpPort = cmd.httpPort ?? config.transport.http.port;
   const logger = createStderrLogger({ debugEnabled: config.logging.debug });
 
+  const configPathForWrite = resolveConfigPathForWrite(cmd.configPath);
+  const autoRootStartDir = path.resolve(
+    expandHome(config.trust.promptDir?.trim() || process.cwd()),
+  );
+  applyAutoGitRootDefaults({
+    config,
+    logger,
+    startDir: autoRootStartDir,
+    configPathForWrite,
+  });
+
   if (config.trust.promptOnStart) {
-    const configPathForWrite = resolveConfigPathForWrite(cmd.configPath);
     const updatedTrustedDirs = await maybePromptTrustedDir(
       logger,
       configPathForWrite,

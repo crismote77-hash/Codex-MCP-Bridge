@@ -243,6 +243,27 @@ Additional options:
 
 ---
 
+## Project Auto-Config Script (Claude Code + Gemini)
+
+To apply a consistent Codex MCP Bridge setup across **all git repos under a directory**
+(useful for `~/.claude.json` project entries), run:
+
+```bash
+node scripts/configure-mcp-projects.mjs --base /home/crismote --max-depth 4 --dry-run
+node scripts/configure-mcp-projects.mjs --base /home/crismote --max-depth 4
+```
+
+What it updates:
+- **Claude Code** (`~/.claude.json`): adds/updates the `codex-bridge` MCP server for each discovered repo.
+- **Gemini CLI** (`~/.gemini/settings.json`): ensures a `codex-bridge` MCP server entry exists.
+- **Bridge config** (`~/.codex-mcp-bridge/config.json`): enables web search/fetch + localhost fetch, and sets stdio transport defaults.
+
+Notes:
+- The script does **not** write API keys. For web search, set `CODEX_MCP_TAVILY_API_KEY` in your environment.
+- With current versions of the bridge, filesystem tools enable automatically when the server runs inside a git repo (no `filesystem.roots` required).
+
+---
+
 ## Common Tasks
 
 - General execution:

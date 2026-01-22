@@ -198,6 +198,9 @@ Use `scripts/configure-mcp-users.mjs` to register the bridge in:
 
 The script supports `--all-users` and `--user <name>`.
 
+For per-repo Claude Code setups, use `scripts/configure-mcp-projects.mjs` to
+scan a base directory for git repos and add/update project entries.
+
 ---
 
 ## Setup Wizard

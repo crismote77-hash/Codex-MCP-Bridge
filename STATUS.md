@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-22T18:16:20Z
+Last updated (UTC): 2026-01-22T18:47:28Z
 
 ## Status Discipline (Always)
 
@@ -19,6 +19,7 @@ Last updated (UTC): 2026-01-22T18:16:20Z
 - T11: Centralized Error Logging System
 - T12: Reduce tool errors for disabled filesystem + untrusted CLI review paths
 - T13: Auto git-root defaults (filesystem + trust)
+- T14: Project auto-config script + docs
 
 ### Next Up
 
@@ -31,6 +32,7 @@ Last updated (UTC): 2026-01-22T18:16:20Z
 | T11 | Codex MCP: Centralized Error Logging System | completed | Global JSONL error logs; platform paths; rotation; privacy levels; WSL support; tests; docs |
 | T12 | Codex MCP: Reduce tool errors for disabled filesystem + untrusted CLI review paths | completed | Filesystem tools gated by roots; codex_review trust retry; tests + docs + changelog |
 | T13 | Codex MCP: Auto git-root defaults (filesystem + trust) | completed | Auto-set `filesystem.roots` + `trust.trustedDirs` to git repo root on startup; optional first-run config write; tests + docs |
+| T14 | Codex MCP: Project auto-config script + docs | completed | Add script to configure Claude Code per-git-repo + Gemini; docs updated; build/test/lint pass |
 | T03 | Codex MCP: Streaming responses support (CLI JSONL + OpenAI SSE) | completed | `codex_exec` supports streaming; tests for JSONL/SSE parsing; docs updated; build/test pass |
 | T04 | Codex MCP: Vision/image input analysis in API path | completed | Image input accepted in CLI+API; validation + tests; docs updated |
 | T05 | Codex MCP: Audio transcription tool (API-only) | completed | New tool + service; validation + tests; docs updated |
@@ -47,6 +49,14 @@ Last updated (UTC): 2026-01-22T18:16:20Z
 | T13.a | Detect git root + autoroot helper | completed | `findGitRoot` + startup autoroot applied; tests added |
 | T13.b | Update docs + changelog + runbook | completed | USER_MANUAL/TECHNICAL/CHANGELOG updated; runbook note appended |
 | T13.c | Verification snapshot | completed | `npm test`, `npm run build`, `npm run lint` recorded |
+
+### Active Subtasks (T14)
+
+| ID | Task | Status | DoD |
+| --- | --- | --- | --- |
+| T14.a | Add project auto-config script | completed | `scripts/configure-mcp-projects.mjs` added; dry-run works |
+| T14.b | Update docs + changelog + runbook | completed | USER_MANUAL/TECHNICAL/CHANGELOG updated; runbook note appended |
+| T14.c | Verification snapshot | completed | `npm test`, `npm run build`, `npm run lint` recorded |
 
 ### Active Subtasks (T03)
 
@@ -274,7 +284,7 @@ Reason: user request to plan Codex MCP Yes* implementation tasks.
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-22T18:15:49Z
+Last verified (UTC): 2026-01-22T18:46:27Z
 
 - `npm test` — 150 tests passed
 - `npm run build` — success

@@ -114,3 +114,7 @@
 
 - T13: Auto git-root defaults for filesystem + trust (no opt-in); auto-create minimal config on first run; codex_exec/codex_review trust check uses effective cwd; verified: npm test, npm run build, npm run lint
 
+## 2026-01-22T18:47:50Z
+
+- T14: add scripts/configure-mcp-projects.mjs (scan git repos, update Claude Code + Gemini + bridge defaults); docs/changelog updated; verified: npm test, npm run build, npm run lint
+

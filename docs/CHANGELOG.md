@@ -28,6 +28,7 @@
 - Tools: add image/vision input support to `codex_exec` (`images` array). Supports file paths, URLs, and data URLs. CLI uses `--image`, API uses multimodal input. Validates count and size limits.
 - Tools: add `codex_transcribe_audio` for audio-to-text transcription using OpenAI Whisper API. API-key auth required; validates file size and extension.
 - Tools: add `codex_generate_image` for image generation using OpenAI DALL-E API. API-key auth required; supports size, quality, style, and count options.
+- Scripts: add `scripts/configure-mcp-projects.mjs` to configure Claude Code per-git-repo + Gemini + bridge defaults under a directory.
 
 ## 0.1.0 (2026-01-19)
 

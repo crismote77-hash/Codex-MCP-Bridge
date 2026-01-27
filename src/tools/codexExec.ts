@@ -13,6 +13,7 @@ import {
   CodexCliError,
 } from "../services/codexCli.js";
 import { runOpenAI, runOpenAIStream } from "../services/openaiClient.js";
+import { circuitBreaker, CircuitBreaker } from "../services/circuitBreaker.js";
 import { formatToolError } from "../utils/toolErrors.js";
 import { redactString } from "../utils/redact.js";
 import { isTrustedCwd } from "../utils/trustDirs.js";
@@ -200,6 +201,25 @@ export function registerCodexExecTool(
     async (args: CodexExecArgs) => {
       let reservation: BudgetReservation | undefined;
       let committed = false;
+
+      // Task 9: Circuit breaker check
+      const circuitKey = CircuitBreaker.makeKey(
+        "codex_exec",
+        args as Record<string, unknown>,
+      );
+      const circuitCheck = circuitBreaker.canExecute(circuitKey);
+      if (!circuitCheck.allowed) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `${circuitCheck.reason}\n\nRetry after ${Math.ceil((circuitCheck.retryAfterMs ?? 0) / 1000)} seconds, or try a different approach.`,
+            },
+          ],
+        };
+      }
+
       try {
         const prompt = args.prompt.trim();
         if (prompt.length > deps.config.limits.maxInputChars) {
@@ -446,10 +466,19 @@ export function registerCodexExecTool(
         );
         committed = true;
 
+        // Task 9: Record success in circuit breaker
+        circuitBreaker.recordSuccess(circuitKey);
+
         return {
           content: [{ type: "text", text }],
         };
       } catch (error) {
+        // Record failure in circuit breaker
+        circuitBreaker.recordFailure(
+          circuitKey,
+          error instanceof Error ? error.message : String(error),
+        );
+
         if (reservation && !committed) {
           try {
             await deps.dailyBudget.release(reservation);

@@ -154,6 +154,49 @@ All tools enforce:
 - Web tools are disabled by default; enable via `web.searchEnabled` and
   `web.fetchEnabled`.
 
+## Async Jobs
+
+- `codex_exec_async` starts a long-running exec in the background and returns a
+  job ID immediately. Useful for prompts that may take longer than typical MCP
+  timeouts.
+- `codex_job_status` returns job progress (0-100%), status, timestamps, and
+  metadata.
+- `codex_job_result` returns the completed output. Supports `waitMs` to poll
+  briefly before returning.
+- `codex_job_cancel` cancels a pending or running job.
+- `codex_job_list` lists all jobs, optionally filtered by status.
+- Jobs are retained for 1 hour; old/excess jobs are automatically cleaned up.
+
+## Filesystem Roots Management
+
+- `codex_filesystem_roots_get` returns current filesystem roots and their status.
+- `codex_filesystem_roots_add` adds a root at runtime (validates path existence).
+- Useful for MCP clients that cannot modify config but need filesystem access.
+
+## Reliability Features
+
+### Circuit Breaker (`src/services/circuitBreaker.ts`)
+
+- Tracks failures by tool+cwd combination.
+- After `failureThreshold` (default 3) failures within `failureWindowMs` (5 min),
+  the circuit opens and blocks requests.
+- After `resetTimeoutMs` (1 min), the circuit moves to half-open and allows one
+  test request.
+- Prevents cascading failures and resource waste from repeated failing commands.
+
+### Idle vs Hard Timeout
+
+- `codex_exec` and `codex_review` use idle timeout that resets whenever output
+  is received from the CLI.
+- This prevents false timeouts during long-running tasks that produce output
+  incrementally.
+- Hard timeout (`maxRuntimeMs`) still caps total execution time.
+
+### Graceful Process Termination
+
+- On timeout, the bridge sends SIGTERM first, then SIGKILL after a grace period.
+- Allows CLI to clean up resources before forced termination.
+
 ---
 
 ## Architecture Overview
@@ -174,8 +217,10 @@ Core components:
 - `src/setupWizard.ts`: guided setup flow (writes config; stderr output)
 - `src/server.ts`: MCP server + tool/resource registration
 - `src/auth/resolveAuth.ts`: backend selection
-- `src/services/codexCli.ts`: child-process runner
+- `src/services/codexCli.ts`: child-process runner with idle/hard timeout and graceful termination
 - `src/services/openaiClient.ts`: API client
+- `src/services/jobManager.ts`: async job tracking for long-running operations
+- `src/services/circuitBreaker.ts`: failure tracking and circuit breaker pattern
 - `src/tools/*`: tool handlers
 - `src/limits/*`: rate limits + daily budgets
 

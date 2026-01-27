@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Error Reduction: Add preflight validation to `codex_review` for git root detection with actionable remediation hints.
+- Tools: `codex_review` defaults to `uncommitted: true` when no review mode is specified (smoother first-time experience).
+- Tools: Improved error messages for filesystem operations include config snippets and remediation options.
+- Reliability: Idle timeout (resets on output) vs hard timeout for CLI operations; prevents false timeouts during long-running tasks.
+- Tools: Add `codex_filesystem_roots_get` and `codex_filesystem_roots_add` for runtime filesystem roots management.
+- Tools: `codex_review` supports `paths` parameter for file-based review without git.
+- Reliability: Graceful process termination (SIGTERM before SIGKILL) with configurable grace period.
+- Tools: Add async job pattern with `codex_exec_async`, `codex_job_status`, `codex_job_result`, `codex_job_cancel`, `codex_job_list` for long-running operations.
+- Reliability: Add circuit breaker to prevent repeated failures; tracks failure patterns by tool+cwd combination.
 - Logging: Add centralized error logging system with JSONL format, platform-specific paths, tiered privacy levels (`off`/`errors`/`debug`/`full`), smart redaction, log rotation, and WSL detection with hints.
 - Tools: `codex_review` diff-based reviews now fall back to `codex exec` when no API key is available, allowing diff reviews with just `codex login` auth. API key path is still preferred for faster direct API calls.
 - Release budget reservations on tool errors.

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-22T18:47:28Z
+Last updated (UTC): 2026-01-27T13:40:00Z
 
 ## Status Discipline (Always)
 
@@ -16,6 +16,7 @@ Last updated (UTC): 2026-01-22T18:47:28Z
 
 ### Completed (Recent)
 
+- T15: 9 Error-Reduction Improvements (preflight validation, async jobs, circuit breaker, etc.)
 - T11: Centralized Error Logging System
 - T12: Reduce tool errors for disabled filesystem + untrusted CLI review paths
 - T13: Auto git-root defaults (filesystem + trust)
@@ -23,12 +24,13 @@ Last updated (UTC): 2026-01-22T18:47:28Z
 
 ### Next Up
 
-- None
+- Update documentation for T15 improvements
 
 ## Task Tracker
 
 | ID | Task | Status | DoD |
 | --- | --- | --- | --- |
+| T15 | Codex MCP: 9 Error-Reduction Improvements | completed | Preflight validation; default uncommitted:true; better error msgs; idle/hard timeout; runtime roots; file-based review; graceful kill; async jobs; circuit breaker; tests pass |
 | T11 | Codex MCP: Centralized Error Logging System | completed | Global JSONL error logs; platform paths; rotation; privacy levels; WSL support; tests; docs |
 | T12 | Codex MCP: Reduce tool errors for disabled filesystem + untrusted CLI review paths | completed | Filesystem tools gated by roots; codex_review trust retry; tests + docs + changelog |
 | T13 | Codex MCP: Auto git-root defaults (filesystem + trust) | completed | Auto-set `filesystem.roots` + `trust.trustedDirs` to git repo root on startup; optional first-run config write; tests + docs |
@@ -284,8 +286,8 @@ Reason: user request to plan Codex MCP Yes* implementation tasks.
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-22T18:46:27Z
+Last verified (UTC): 2026-01-27T13:39:00Z
 
-- `npm test` — 150 tests passed
+- `npm test` — 147 tests passed (3 skipped)
 - `npm run build` — success
 - `npm run lint` — clean

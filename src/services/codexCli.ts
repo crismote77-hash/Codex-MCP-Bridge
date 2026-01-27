@@ -55,6 +55,30 @@ export type CodexCommandResult = {
   exitCode: number | null;
 };
 
+export type CodexTimeoutOptions = {
+  /** Maximum total runtime (hard cap). Default: timeoutMs */
+  maxRuntimeMs?: number;
+  /** Timeout if no output received. Default: 60000 (60s). Set to 0 to disable. */
+  idleTimeoutMs?: number;
+};
+
+/**
+ * Gracefully terminate a process: SIGTERM first, then SIGKILL after grace period.
+ */
+function gracefulKill(
+  child: ReturnType<typeof spawn>,
+  gracePeriodMs = 5000,
+): void {
+  child.kill("SIGTERM");
+  setTimeout(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Process may have already exited
+    }
+  }, gracePeriodMs);
+}
+
 export async function runCodexCommand(opts: {
   command: string;
   args: string[];
@@ -62,33 +86,62 @@ export async function runCodexCommand(opts: {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs: number;
+  /** Additional timeout options for idle vs max runtime */
+  timeoutOptions?: CodexTimeoutOptions;
 }): Promise<CodexCommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(opts.command, opts.args, {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
       stdio: "pipe",
+      detached: false, // Keep in same process group for cleanup
     });
 
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let timeoutReason = "";
 
-    const timer = setTimeout(() => {
+    // Timeout configuration
+    const maxRuntimeMs = opts.timeoutOptions?.maxRuntimeMs ?? opts.timeoutMs;
+    const idleTimeoutMs = opts.timeoutOptions?.idleTimeoutMs ?? 60000; // 60s default idle
+
+    // Max runtime timer (hard cap)
+    const maxRuntimeTimer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
-    }, opts.timeoutMs);
+      timeoutReason = `max runtime (${maxRuntimeMs}ms)`;
+      gracefulKill(child);
+    }, maxRuntimeMs);
+
+    // Idle timer (reset on output)
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const resetIdleTimer = () => {
+      if (idleTimeoutMs <= 0) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        timeoutReason = `idle timeout (${idleTimeoutMs}ms with no output)`;
+        gracefulKill(child);
+      }, idleTimeoutMs);
+    };
+
+    // Start idle timer
+    resetIdleTimer();
 
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
+      resetIdleTimer(); // Reset idle timer on output
     });
 
     child.stderr.on("data", (chunk) => {
       stderr += String(chunk);
+      resetIdleTimer(); // Reset idle timer on output
     });
 
     child.on("error", (error) => {
-      clearTimeout(timer);
+      clearTimeout(maxRuntimeTimer);
+      if (idleTimer) clearTimeout(idleTimer);
       const err = new CodexCliError(
         `Failed to run Codex CLI: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -96,10 +149,11 @@ export async function runCodexCommand(opts: {
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
+      clearTimeout(maxRuntimeTimer);
+      if (idleTimer) clearTimeout(idleTimer);
       if (timedOut) {
         const err = new CodexCliError(
-          `Codex CLI timed out after ${opts.timeoutMs}ms.`,
+          `Codex CLI timed out after ${timeoutReason}.`,
         );
         err.exitCode = code ?? undefined;
         err.stderr = redactString(stderr);
@@ -144,6 +198,8 @@ export function runCodexCommandStream(opts: {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs: number;
+  /** Additional timeout options for idle vs max runtime */
+  timeoutOptions?: CodexTimeoutOptions;
 }): CodexStreamEmitter {
   const emitter = new CodexStreamEmitter();
 
@@ -155,12 +211,34 @@ export function runCodexCommandStream(opts: {
 
   let stderr = "";
   let timedOut = false;
+  let timeoutReason = "";
   const collectedText: string[] = [];
 
-  const timer = setTimeout(() => {
+  // Timeout configuration
+  const maxRuntimeMs = opts.timeoutOptions?.maxRuntimeMs ?? opts.timeoutMs;
+  const idleTimeoutMs = opts.timeoutOptions?.idleTimeoutMs ?? 60000; // 60s default
+
+  // Max runtime timer
+  const maxRuntimeTimer = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGKILL");
-  }, opts.timeoutMs);
+    timeoutReason = `max runtime (${maxRuntimeMs}ms)`;
+    gracefulKill(child);
+  }, maxRuntimeMs);
+
+  // Idle timer
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const resetIdleTimer = () => {
+    if (idleTimeoutMs <= 0) return;
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      timedOut = true;
+      timeoutReason = `idle timeout (${idleTimeoutMs}ms with no output)`;
+      gracefulKill(child);
+    }, idleTimeoutMs);
+  };
+
+  resetIdleTimer();
 
   const rl = readline.createInterface({
     input: child.stdout,
@@ -168,6 +246,7 @@ export function runCodexCommandStream(opts: {
   });
 
   rl.on("line", (line) => {
+    resetIdleTimer(); // Reset idle timer on any output
     const frame = parseJsonlLine(line);
     if (frame) {
       emitter.emit("frame", frame);
@@ -194,10 +273,12 @@ export function runCodexCommandStream(opts: {
 
   child.stderr.on("data", (chunk) => {
     stderr += String(chunk);
+    resetIdleTimer(); // Reset idle timer on stderr too
   });
 
   child.on("error", (error) => {
-    clearTimeout(timer);
+    clearTimeout(maxRuntimeTimer);
+    if (idleTimer) clearTimeout(idleTimer);
     rl.close();
     const err = new CodexCliError(
       `Failed to run Codex CLI: ${error instanceof Error ? error.message : String(error)}`,
@@ -206,11 +287,12 @@ export function runCodexCommandStream(opts: {
   });
 
   child.on("close", (code) => {
-    clearTimeout(timer);
+    clearTimeout(maxRuntimeTimer);
+    if (idleTimer) clearTimeout(idleTimer);
     rl.close();
     if (timedOut) {
       const err = new CodexCliError(
-        `Codex CLI timed out after ${opts.timeoutMs}ms.`,
+        `Codex CLI timed out after ${timeoutReason}.`,
       );
       err.exitCode = code ?? undefined;
       err.stderr = redactString(stderr);

@@ -11,6 +11,8 @@ import { registerCodexWebSearchTool } from "./codexWebSearch.js";
 import { registerCodexWebFetchTool } from "./codexWebFetch.js";
 import { registerCodexTranscribeTool } from "./codexTranscribe.js";
 import { registerCodexGenerateImageTool } from "./codexGenerateImage.js";
+import { registerCodexFilesystemRootsTool } from "./codexFilesystemRoots.js";
+import { registerCodexAsyncJobsTools } from "./codexAsyncJobs.js";
 
 export function registerTools(
   server: McpServer,
@@ -18,6 +20,14 @@ export function registerTools(
 ): void {
   registerCodexExecTool(server, deps);
   registerCodexReviewTool(server, deps);
+
+  // Always register filesystem roots management tools (allows runtime configuration)
+  registerCodexFilesystemRootsTool(server, deps);
+
+  // Register async job tools for long-running operations
+  registerCodexAsyncJobsTools(server, deps);
+
+  // Only register filesystem tools if roots are configured
   const filesystemEnabled = deps.config.filesystem.roots.some(
     (root) => root.trim().length > 0,
   );

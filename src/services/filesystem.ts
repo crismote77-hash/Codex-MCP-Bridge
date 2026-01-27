@@ -36,9 +36,21 @@ export function normalizeRoots(roots: string[]): string[] {
 
 export function requireRoots(roots: string[]): string[] {
   if (roots.length === 0) {
-    throw new FilesystemError(
-      "Filesystem access is disabled. Configure filesystem.roots or CODEX_MCP_FILESYSTEM_ROOTS.",
-    );
+    const configHint = [
+      "Filesystem access is disabled.",
+      "",
+      "To enable filesystem tools, configure roots using one of:",
+      "",
+      "  Option 1: Environment variable",
+      "    export CODEX_MCP_FILESYSTEM_ROOTS=/path/to/repo",
+      "",
+      "  Option 2: Config file (~/.codex-mcp-bridge/config.json)",
+      '    { "filesystem": { "roots": ["/path/to/repo"] } }',
+      "",
+      "  Option 3: Run the server from within a git repository",
+      "    (roots are auto-detected from git repo root)",
+    ].join("\n");
+    throw new FilesystemError(configHint);
   }
   return roots;
 }
@@ -85,7 +97,10 @@ export async function resolvePathWithinRoots(opts: {
   }
 
   if (!foundWithinRoot) {
-    throw new FilesystemError("Path is outside configured filesystem roots.");
+    const rootsList = roots.length > 0 ? roots.join(", ") : "(none)";
+    throw new FilesystemError(
+      `Path is outside configured filesystem roots.\n\nCurrent roots: ${rootsList}\nRequested path: ${opts.inputPath}`,
+    );
   }
   const expect = opts.expect ?? "any";
   if (expect === "file") {

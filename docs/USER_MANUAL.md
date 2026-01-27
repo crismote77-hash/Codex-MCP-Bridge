@@ -47,7 +47,7 @@ codex login
 
 3) Configure your CLI to run `codex-mcp-bridge --stdio` (see below).
 
-4) Restart your CLI and list tools. You should see `codex_exec`, `codex_review`, `codex_read_file`, `codex_search_files`, `codex_code_fix`, `codex_count_tokens`, `codex_count_tokens_batch`, `codex_web_search`, `codex_web_fetch`, `codex_transcribe_audio`, and `codex_generate_image`.
+4) Restart your CLI and list tools. You should see `codex_exec`, `codex_review`, `codex_read_file`, `codex_search_files`, `codex_code_fix`, `codex_count_tokens`, `codex_count_tokens_batch`, `codex_web_search`, `codex_web_fetch`, `codex_transcribe_audio`, `codex_generate_image`, `codex_filesystem_roots_get`, `codex_filesystem_roots_add`, `codex_exec_async`, `codex_job_status`, `codex_job_result`, `codex_job_cancel`, and `codex_job_list`.
 
 ---
 
@@ -289,6 +289,14 @@ Notes:
 - Web search/fetch:
   - "Use codex_web_search with query='latest MCP spec'"
   - "Use codex_web_fetch with url='https://modelcontextprotocol.io/specification/2025-11-25'"
+- Async execution (long-running tasks):
+  - "Use codex_exec_async with prompt='...' to start a background job"
+  - "Use codex_job_status with jobId='...' to check progress"
+  - "Use codex_job_result with jobId='...' to get the result (optionally with waitMs)"
+  - "Use codex_job_list to see all jobs"
+- Filesystem roots management:
+  - "Use codex_filesystem_roots_get to see current filesystem roots"
+  - "Use codex_filesystem_roots_add with path='/new/root' to add a root at runtime"
 
 ---
 
@@ -338,6 +346,21 @@ Notes:
 - Web tools:
   - `codex_web_search` and `codex_web_fetch` are disabled by default; enable them via config/env.
   - `codex_web_search` requires a Tavily API key (`web.tavilyApiKey`).
+- Async jobs:
+  - `codex_exec_async` starts a long-running exec in the background and returns a job ID immediately.
+  - Use `codex_job_status` to poll progress (0-100%), `codex_job_result` to get the output.
+  - Jobs are retained for 1 hour; old jobs are automatically cleaned up.
+  - `codex_job_cancel` can stop a pending or running job.
+- Circuit breaker:
+  - The bridge tracks repeated failures by tool+cwd combination.
+  - After 3 failures within 5 minutes, the circuit "opens" and blocks requests for 1 minute.
+  - This prevents cascading failures and resource waste.
+- Filesystem roots management:
+  - `codex_filesystem_roots_get` shows current roots and their status.
+  - `codex_filesystem_roots_add` adds roots at runtime (useful for MCP clients that can't modify config).
+- File-based review:
+  - `codex_review` supports `paths` array for reviewing specific files without git.
+  - Requires filesystem roots to be configured and an API key for the review.
 
 ---
 

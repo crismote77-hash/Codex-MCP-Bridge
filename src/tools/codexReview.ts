@@ -5,9 +5,11 @@ import { resolveAuth } from "../auth/resolveAuth.js";
 import type { BudgetReservation } from "../limits/dailyTokenBudget.js";
 import { runCodexCommand, CodexCliError } from "../services/codexCli.js";
 import { runOpenAI } from "../services/openaiClient.js";
+import { collectFiles } from "../services/filesystem.js";
 import { formatToolError } from "../utils/toolErrors.js";
 import { redactString } from "../utils/redact.js";
 import { isTrustedCwd } from "../utils/trustDirs.js";
+import { findGitRoot } from "../utils/gitRoot.js";
 
 const inputSchema = {
   prompt: z.string().optional(),
@@ -18,6 +20,11 @@ const inputSchema = {
   uncommitted: z.boolean().default(false),
   title: z.string().optional(),
   diff: z.string().optional(),
+  // File-based review (no git required)
+  paths: z
+    .array(z.string())
+    .optional()
+    .describe("Paths to review (files or directories). Uses filesystem roots."),
   configOverrides: z.array(z.string()).optional(),
   timeoutMs: z.number().int().positive().optional(),
   model: z.string().optional(),
@@ -35,6 +42,7 @@ type CodexReviewArgs = {
   uncommitted?: boolean;
   title?: string;
   diff?: string;
+  paths?: string[];
   configOverrides?: string[];
   timeoutMs?: number;
   model?: string;
@@ -114,6 +122,214 @@ export function registerCodexReviewTool(
 
         const diff = args.diff?.trim();
         const wantsDiffReview = Boolean(diff);
+        const wantsFileReview = Boolean(args.paths && args.paths.length > 0);
+
+        // Task 1: Preflight validation - check git root for CLI mode before invoking
+        // Task 2: Default to uncommitted:true when no review mode specified
+        const hasReviewMode = Boolean(
+          diff ||
+          wantsFileReview ||
+          args.uncommitted ||
+          args.base ||
+          args.commit ||
+          args.prompt?.trim(),
+        );
+
+        // Apply default: if no review mode specified, default to uncommitted review
+        if (!hasReviewMode) {
+          args = { ...args, uncommitted: true };
+          deps.logger.info(
+            "No review mode specified; defaulting to uncommitted:true",
+          );
+        }
+
+        // Preflight: for CLI-based reviews (not diff or file-based), require git repo
+        const cwdToCheck = args.cwd ?? process.cwd();
+        const gitRoot = findGitRoot(cwdToCheck);
+
+        if (!wantsDiffReview && !wantsFileReview && !gitRoot) {
+          const configHint = [
+            "Remediation options:",
+            "  1. Provide a 'diff' string for diff-based review (works without git)",
+            "  2. Provide 'paths' for file-based review (requires filesystem roots)",
+            "  3. Set 'cwd' to a directory inside a git repository",
+            `  4. Current cwd: ${cwdToCheck}`,
+          ].join("\n");
+
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `codex_review requires a git repository for repo-based reviews.\n\n${configHint}`,
+              },
+            ],
+          };
+        }
+
+        // Task 6: File-based review (no git required)
+        if (wantsFileReview && args.paths) {
+          // Collect files from filesystem roots
+          if (deps.config.filesystem.roots.length === 0) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "File-based review requires filesystem roots. Use codex_filesystem_roots_add or set CODEX_MCP_FILESYSTEM_ROOTS.",
+                },
+              ],
+            };
+          }
+
+          let collectedFiles;
+          try {
+            collectedFiles = await collectFiles({
+              paths: args.paths,
+              roots: deps.config.filesystem.roots,
+              maxFileBytes: deps.config.filesystem.maxFileBytes,
+              maxTotalBytes: deps.config.filesystem.maxTotalBytes,
+              maxFiles: deps.config.filesystem.maxFiles,
+            });
+          } catch (error) {
+            const msg =
+              error instanceof Error
+                ? error.message
+                : "Failed to collect files";
+            return {
+              isError: true,
+              content: [{ type: "text", text: msg }],
+            };
+          }
+
+          if (collectedFiles.files.length === 0) {
+            return {
+              isError: true,
+              content: [
+                { type: "text", text: "No files found in provided paths." },
+              ],
+            };
+          }
+
+          // Build a combined content for review
+          const fileContents = collectedFiles.files
+            .map((f) => `--- ${f.path} ---\n${f.content}`)
+            .join("\n\n");
+
+          const reviewPrompt = [
+            args.prompt?.trim() ||
+              "Review the following code files for bugs, issues, and improvements.",
+            "",
+            fileContents,
+          ].join("\n");
+
+          if (reviewPrompt.length > deps.config.limits.maxInputChars) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: `Combined file content exceeds max input size (${deps.config.limits.maxInputChars} chars). Use fewer files or specify a smaller path.`,
+                },
+              ],
+            };
+          }
+
+          // Use API or CLI exec for file-based review
+          let auth;
+          try {
+            auth = resolveAuth({
+              mode: "api_key",
+              cliAuthPath: deps.config.auth.cliAuthPath,
+              apiKey: deps.config.auth.apiKey,
+              apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
+              apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
+              apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
+              env: process.env,
+            });
+          } catch {
+            auth = resolveAuth({
+              mode: deps.config.auth.mode,
+              cliAuthPath: deps.config.auth.cliAuthPath,
+              apiKey: deps.config.auth.apiKey,
+              apiKeyEnvVar: deps.config.auth.apiKeyEnvVar,
+              apiKeyEnvVarAlt: deps.config.auth.apiKeyEnvVarAlt,
+              apiKeyFileEnvVar: deps.config.auth.apiKeyFileEnvVar,
+              env: process.env,
+            });
+          }
+
+          reservation = await deps.dailyBudget.reserve(
+            estimateTokensFromChars(reviewPrompt.length),
+          );
+
+          let text = "";
+          let inputTokens = estimateTokensFromChars(reviewPrompt.length);
+          let outputTokens = 0;
+
+          if (auth.type === "api_key") {
+            const apiResult = await runOpenAI({
+              apiKey: auth.apiKey,
+              baseUrl: deps.config.api.baseUrl,
+              model: args.model ?? deps.config.api.model,
+              prompt: reviewPrompt,
+              temperature: args.temperature ?? deps.config.api.temperature,
+              maxOutputTokens:
+                args.maxOutputTokens ?? deps.config.api.maxOutputTokens,
+              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+            });
+            text = apiResult.text;
+            inputTokens = apiResult.usage?.inputTokens ?? inputTokens;
+            outputTokens =
+              apiResult.usage?.outputTokens ??
+              estimateTokensFromChars(text.length);
+          } else {
+            // Fall back to CLI exec
+            const execArgs = buildCodexExecArgsForDiffReview(
+              { ...args, skipGitRepoCheck: true },
+              deps.config,
+            );
+            const result = await runCodexCommand({
+              command: deps.config.cli.command,
+              args: execArgs,
+              input: reviewPrompt,
+              cwd: args.cwd,
+              env: process.env,
+              timeoutMs: args.timeoutMs ?? deps.config.execution.timeoutMs,
+            });
+
+            const stdout = result.stdout.trim();
+            const stderr = result.stderr.trim();
+            text = stdout || stderr;
+            outputTokens = estimateTokensFromChars(text.length || 1);
+
+            if (result.exitCode !== 0 && result.exitCode !== 1) {
+              const err = new CodexCliError(
+                `Codex CLI exited with ${result.exitCode}`,
+              );
+              err.exitCode = result.exitCode ?? undefined;
+              err.stderr = result.stderr;
+              throw err;
+            }
+          }
+
+          await deps.dailyBudget.commit(
+            "codex_review",
+            inputTokens + outputTokens,
+            undefined,
+            reservation,
+          );
+          committed = true;
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Reviewed ${collectedFiles.files.length} file(s) from ${collectedFiles.root}\n\n${text}`,
+              },
+            ],
+          };
+        }
         const cwdForTrust = args.cwd ?? process.cwd();
         const shouldRetryTrust = (
           result: { exitCode: number | null; stderr: string },

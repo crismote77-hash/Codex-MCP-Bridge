@@ -21,6 +21,11 @@ vi.mock("../src/services/codexCli.js", async (importOriginal) => {
   };
 });
 
+// Mock findGitRoot to return a valid git root for CLI behavior tests
+vi.mock("../src/utils/gitRoot.js", () => ({
+  findGitRoot: vi.fn().mockReturnValue("/tmp"),
+}));
+
 class FakeServer {
   tools: Record<string, (args: unknown) => Promise<unknown>> = {};
 

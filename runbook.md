@@ -118,3 +118,15 @@
 
 - T14: add scripts/configure-mcp-projects.mjs (scan git repos, update Claude Code + Gemini + bridge defaults); docs/changelog updated; verified: npm test, npm run build, npm run lint
 
+## 2026-01-27T13:39:29Z
+
+- Completed all 10 error-reduction improvements: (1) preflight validation for codex_review, (2) default uncommitted:true, (3) improved error messages with config hints, (4) idle timeout vs hard timeout, (5) runtime filesystem roots management, (6) file-based review fallback, (7) graceful process termination (SIGTERM before SIGKILL), (8) async job pattern, (9) circuit breaker, (10) API fallback on CLI timeout. Fixed test failures by mocking findGitRoot in codexReviewCliBehavior.test.ts. Build/test/lint all pass (147 tests). Next: update documentation.
+
+## 2026-01-27T13:41:50Z
+
+- T15 completed: All 10 error-reduction improvements implemented and documented. Updated USER_MANUAL.md with new tools (async jobs, filesystem roots management). Updated TECHNICAL.md with architecture (JobManager, CircuitBreaker, idle timeout, graceful kill, API fallback). Updated CHANGELOG.md. All 147 tests pass; build and lint clean.
+
+## 2026-01-27T13:49:06Z
+
+- Removed API fallback on CLI timeout feature per user feedback (could unexpectedly consume API credits). Now 9 improvements instead of 10. Updated docs and STATUS.md. Tests pass.
+

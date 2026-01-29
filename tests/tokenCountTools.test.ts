@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { encoding_for_model } from "@dqbd/tiktoken";
-import modelToEncoding from "@dqbd/tiktoken/model_to_encoding.json";
+import { get_encoding } from "@dqbd/tiktoken";
 import { registerCodexCountTokensTool } from "../src/tools/codexCountTokens.js";
 import { registerCodexCountTokensBatchTool } from "../src/tools/codexCountTokensBatch.js";
 import { loadConfig } from "../src/config.js";
@@ -48,13 +47,13 @@ function createDeps(env: NodeJS.ProcessEnv): SharedDependencies {
 describe("token count tools", () => {
   it("counts tokens for a single text", async () => {
     const deps = createDeps({
-      CODEX_MCP_MODEL: "o3",
+      CODEX_MCP_MODEL: "gpt-5.2",
     } as NodeJS.ProcessEnv);
     const server = new FakeServer();
     registerCodexCountTokensTool(server as unknown as McpServer, deps);
     const handler = server.tools["codex_count_tokens"];
 
-    const encoding = encoding_for_model("o3");
+    const encoding = get_encoding("cl100k_base");
     const expected = encoding.encode("hello world").length;
     encoding.free();
 
@@ -68,21 +67,20 @@ describe("token count tools", () => {
       encoding?: string;
     };
 
-    const mapping = modelToEncoding as Record<string, string>;
     expect(payload.tokens).toBe(expected);
-    expect(payload.model).toBe("o3");
-    expect(payload.encoding).toBe(mapping["o3"]);
+    expect(payload.model).toBe("gpt-5.2");
+    expect(payload.encoding).toBe("cl100k_base");
   });
 
   it("counts tokens in batch with totals", async () => {
     const deps = createDeps({
-      CODEX_MCP_MODEL: "o3",
+      CODEX_MCP_MODEL: "gpt-5.2",
     } as NodeJS.ProcessEnv);
     const server = new FakeServer();
     registerCodexCountTokensBatchTool(server as unknown as McpServer, deps);
     const handler = server.tools["codex_count_tokens_batch"];
 
-    const encoding = encoding_for_model("o3");
+    const encoding = get_encoding("cl100k_base");
     const expected = [
       encoding.encode("hello").length,
       encoding.encode("world").length,
@@ -104,7 +102,7 @@ describe("token count tools", () => {
 
   it("rejects oversized text input", async () => {
     const deps = createDeps({
-      CODEX_MCP_MODEL: "o3",
+      CODEX_MCP_MODEL: "gpt-5.2",
       CODEX_MCP_MAX_INPUT_CHARS: "3",
     } as NodeJS.ProcessEnv);
     const server = new FakeServer();

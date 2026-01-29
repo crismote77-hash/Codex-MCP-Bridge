@@ -297,7 +297,7 @@ Each error is logged as a single JSON line:
   "mcpVersion": "0.1.0",
   "sessionId": "uuid",
   "toolName": "codex_exec",
-  "toolArgs": { "promptLength": 100, "promptHash": "abc123...", "model": "o3" },
+  "toolArgs": { "promptLength": 100, "promptHash": "abc123...", "model": "gpt-5.2" },
   "osInfo": { "platform": "linux", "release": "...", "arch": "x64", "isWSL": false },
   "errorType": "Error",
   "message": "API request failed",

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated (UTC): 2026-01-27T13:40:00Z
+Last updated (UTC): 2026-01-29T14:42:50Z
 
 ## Status Discipline (Always)
 
@@ -30,6 +30,8 @@ Last updated (UTC): 2026-01-27T13:40:00Z
 
 | ID | Task | Status | DoD |
 | --- | --- | --- | --- |
+| T17 | Increase filesystem maxFiles default | completed | Config updated to 1000; changelog updated; tests not run |
+| T16 | Default model switch to gpt-5.2 | completed | Defaults updated in config; docs/changelog updated; tests not run |
 | T15 | Codex MCP: 9 Error-Reduction Improvements | completed | Preflight validation; default uncommitted:true; better error msgs; idle/hard timeout; runtime roots; file-based review; graceful kill; async jobs; circuit breaker; tests pass |
 | T11 | Codex MCP: Centralized Error Logging System | completed | Global JSONL error logs; platform paths; rotation; privacy levels; WSL support; tests; docs |
 | T12 | Codex MCP: Reduce tool errors for disabled filesystem + untrusted CLI review paths | completed | Filesystem tools gated by roots; codex_review trust retry; tests + docs + changelog |
@@ -286,8 +288,6 @@ Reason: user request to plan Codex MCP Yes* implementation tasks.
 
 ## Verification Snapshot
 
-Last verified (UTC): 2026-01-27T13:39:00Z
+Last verified (UTC): 2026-01-29T14:42:50Z
 
-- `npm test` — 147 tests passed (3 skipped)
-- `npm run build` — success
-- `npm run lint` — clean
+- Not run (not requested)

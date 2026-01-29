@@ -18,7 +18,7 @@ describe("setup wizard", () => {
       nonInteractive: true,
       authMode: "api_key",
       transport: "stdio",
-      model: "o3",
+      model: "gpt-5.2",
     });
 
     const raw = await fs.readFile(configPath, "utf8");
@@ -42,7 +42,7 @@ describe("setup wizard", () => {
       nonInteractive: true,
       authMode: "cli",
       transport: "stdio",
-      model: "o3",
+      model: "gpt-5.2",
     });
 
     const raw = await fs.readFile(configPath, "utf8");

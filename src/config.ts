@@ -23,7 +23,7 @@ const configSchema = z
     cli: z
       .object({
         command: z.string().default("codex"),
-        defaultModel: z.string().default("o3"),
+        defaultModel: z.string().default("gpt-5.2"),
         color: z.enum(["auto", "always", "never"]).default("never"),
       })
       .default({}),
@@ -37,7 +37,7 @@ const configSchema = z
     api: z
       .object({
         baseUrl: z.string().default("https://api.openai.com/v1"),
-        model: z.string().default("o3"),
+        model: z.string().default("gpt-5.2"),
         temperature: z.number().min(0).max(2).default(0.2),
         maxOutputTokens: z.number().int().positive().default(2048),
       })
@@ -64,7 +64,7 @@ const configSchema = z
     filesystem: z
       .object({
         roots: z.array(z.string()).default([]),
-        maxFiles: z.number().int().positive().default(25),
+        maxFiles: z.number().int().positive().default(1000),
         maxFileBytes: z.number().int().positive().default(200000),
         maxTotalBytes: z.number().int().positive().default(2000000),
         maxSearchResults: z.number().int().positive().default(200),

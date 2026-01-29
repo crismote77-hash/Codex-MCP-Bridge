@@ -97,7 +97,7 @@ describe("codex_exec (CLI mode)", () => {
       .mockResolvedValueOnce({
         stdout: "",
         stderr:
-          "ERROR: {\"detail\":\"The 'o3' model is not supported when using Codex with a ChatGPT account.\"}\n",
+          "ERROR: {\"detail\":\"The 'gpt-5.2' model is not supported when using Codex with a ChatGPT account.\"}\n",
         exitCode: 1,
       })
       .mockResolvedValueOnce({
@@ -120,11 +120,11 @@ describe("codex_exec (CLI mode)", () => {
     const args3 = runCodexCommandMock.mock.calls[2]?.[0]?.args ?? [];
 
     expect(args1).toContain("--model");
-    expect(args1[args1.indexOf("--model") + 1]).toBe("o3");
+    expect(args1[args1.indexOf("--model") + 1]).toBe("gpt-5.2");
     expect(args1).not.toContain("--skip-git-repo-check");
 
     expect(args2).toContain("--model");
-    expect(args2[args2.indexOf("--model") + 1]).toBe("o3");
+    expect(args2[args2.indexOf("--model") + 1]).toBe("gpt-5.2");
     expect(args2).toContain("--skip-git-repo-check");
 
     expect(args3).toContain("--skip-git-repo-check");

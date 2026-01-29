@@ -130,3 +130,15 @@
 
 - Removed API fallback on CLI timeout feature per user feedback (could unexpectedly consume API credits). Now 9 improvements instead of 10. Updated docs and STATUS.md. Tests pass.
 
+## 2026-01-29T14:34:58Z
+
+- Default model -> gpt-5-2 for CLI/API defaults; docs/tests updated; verification not run
+
+## 2026-01-29T14:41:06Z
+
+- Correct default model identifier to gpt-5.2 (dot) in config/docs/tests; verification not run
+
+## 2026-01-29T14:43:03Z
+
+- Increase filesystem.maxFiles default to 1000; changelog updated; verification not run
+

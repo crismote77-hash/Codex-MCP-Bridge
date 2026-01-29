@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Defaults: switch the default model to `gpt-5.2` for CLI and API paths.
+- Defaults: increase `filesystem.maxFiles` to 1000.
 - Error Reduction: Add preflight validation to `codex_review` for git root detection with actionable remediation hints.
 - Tools: `codex_review` defaults to `uncommitted: true` when no review mode is specified (smoother first-time experience).
 - Tools: Improved error messages for filesystem operations include config snippets and remediation options.

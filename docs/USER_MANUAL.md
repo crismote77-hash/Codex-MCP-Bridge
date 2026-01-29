@@ -101,7 +101,7 @@ After the basic questions, the wizard can prompt for advanced settings. It’s s
 
 Examples:
 ```bash
-codex-mcp-bridge --setup --non-interactive --auth auto --model o3
+codex-mcp-bridge --setup --non-interactive --auth auto --model gpt-5.2
 codex-mcp-bridge --setup --dry-run
 codex-mcp-bridge --setup --overwrite
 ```
@@ -111,7 +111,7 @@ codex-mcp-bridge --setup --overwrite
 ```text
 Select transport mode: stdio (default)
 Select authentication mode: auto (default)
-Default model (used unless overridden) [o3] (press enter)
+Default model (used unless overridden) [gpt-5.2] (press enter)
 
 Configure advanced settings (CLI paths, env vars, API settings, limits)? [y/N] n
 ```
@@ -280,7 +280,7 @@ Notes:
 - Patch generation:
   - "Use codex_code_fix with request='Fix the TODOs in src/' and paths=['src']"
 - Token counting:
-  - "Use codex_count_tokens with text='Hello world' and model='o3'"
+  - "Use codex_count_tokens with text='Hello world' and model='gpt-5.2'"
   - "Use codex_count_tokens_batch with texts=['one','two']"
 - Audio transcription:
   - "Use codex_transcribe_audio with audioPath='/path/to/audio.mp3'" (API-only, requires API key)
@@ -373,7 +373,7 @@ Example:
 {
   "auth": { "mode": "auto" },
   "cli": { "command": "codex" },
-  "api": { "model": "o3" },
+  "api": { "model": "gpt-5.2" },
   "limits": { "maxRequestsPerMinute": 30 },
   "filesystem": {
     "roots": ["/path/to/repo"],
